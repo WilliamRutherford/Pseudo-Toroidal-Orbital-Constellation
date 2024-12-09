@@ -152,7 +152,7 @@ test_ellipse = False
 fitting = True
 single_orbit_plot = False
 
-outer_radius = 0.7
+outer_radius = 0.1
 num_objs = 25
 
 if(__name__ == "__main__"):
@@ -174,13 +174,14 @@ if(__name__ == "__main__"):
     # Find the difference between our generated ellipse cross-section and the desired cross-section
     #difference = hull_diff(cross_section, desired_cross, log=True)
     if(fitting):
-        best_params = fit_desired(desired_cross, start_minor = 1, start_major = 1 + outer_radius, start_ang=np.arcsin(outer_radius))
+        best_params = fit_desired(desired_cross, start_minor = 1, start_major = 1.1, start_ang=np.arcsin(outer_radius))
         print("best parameters:", best_params)
         (min_rad, max_rad, ang) = best_params
-        best_ellipse = generateEllipse(best_params[0], best_params[1])
-        best_cross_section = generateCrossSection(best_ellipse, best_params[2])
+        best_ellipse = generateEllipse(min_rad, max_rad)
+        best_cross_section = generateCrossSection(best_ellipse, ang)
         # turn the ellipse into 3d
         ellipse = np.stack((best_ellipse[0], best_ellipse[1], np.zeros_like(best_ellipse[0])))
+        ellipse_flat = best_ellipse
     
     # Given an ellipse and an angle, plot some number of objs in offset orbits
     single_orbit = generateOrbit(ellipse, ang, log = True)
@@ -197,8 +198,15 @@ if(__name__ == "__main__"):
         
         # now do a 3D plot
         fig = plt.figure()
-        ax = fig.add_subplot(projection='3d')
-        ax.set_box_aspect((np.ptp(all_orbits[0]), np.ptp(all_orbits[1]), np.ptp(all_orbits[2])))
-        ax.scatter(all_orbits[0], all_orbits[1], all_orbits[2], c = labels)
+        ax1 = fig.add_subplot(1, 2, 1, projection='3d')
+        ax1.set_box_aspect((np.ptp(all_orbits[0]), np.ptp(all_orbits[1]), np.ptp(all_orbits[2])))
+        ax1.scatter(all_orbits[0], all_orbits[1], all_orbits[2], c = labels)
+        
+        ax2 = fig.add_subplot(1, 2, 2)
+        ax2.set_aspect(1)
+        ax2.scatter(best_cross_section[0], best_cross_section[1], c = 'blue')
+        ax2.scatter(desired_cross[0], desired_cross[1], c = 'red')
+        
+        
         
     
