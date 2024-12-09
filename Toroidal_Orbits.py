@@ -65,6 +65,9 @@ def generateCrossSection(ellipse, angle, log = False):
         print("plane component shape:", plane_comp.shape)
         print("x-prime component shape:", xp_comp.shape)
     cross_section_pts = np.stack((xp_comp, yp_comp))
+    '''
+    Could this be done in a single operation?
+    '''
     return cross_section_pts
 
 '''
@@ -174,7 +177,7 @@ if(__name__ == "__main__"):
     # Find the difference between our generated ellipse cross-section and the desired cross-section
     #difference = hull_diff(cross_section, desired_cross, log=True)
     if(fitting):
-        best_params = fit_desired(desired_cross, start_minor = 1, start_major = 1.1, start_ang=np.arcsin(outer_radius))
+        best_params = fit_desired(desired_cross, start_minor = 1, start_major = 1.00125, start_ang=np.arcsin(outer_radius))
         print("best parameters:", best_params)
         (min_rad, max_rad, ang) = best_params
         best_ellipse = generateEllipse(min_rad, max_rad)

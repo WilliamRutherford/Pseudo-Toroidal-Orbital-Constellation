@@ -14,5 +14,8 @@ Outer Radius of 0.1:
 Outer Radius of 0.3:
 ![medium](/fig_plots/Toroidal_OR_0-3.png "Outer Radius 0.3")
 
+Outer Radius of 0.5:
+![halfway](/fig_plots/Toroidal_OR_0-5.png "Outer Radius 0.5")
+
 Outer Radius of 0.7:
 ![large](/fig_plots/Toroidal_OR_0-7.png "Outer Radius 0.7")
