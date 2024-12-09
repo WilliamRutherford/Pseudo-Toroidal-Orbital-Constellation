@@ -13,19 +13,30 @@ Given the length of the minor and major axes, generate the set of points for an 
 "divs" is the number of points created, unevenly spaced on the ellipse. 
 '''
 def generateEllipse(minor_len, major_len, divs=100, log=False):
+    #if(minor_len > major_len):
+        #print("minor length has exceeded major length")
+    '''
     ecc = math.sqrt(1 - (minor_len / major_len)**2)
-    
+    ecc_sq = np.abs(1 - (minor_len / major_len)**2)
+    '''
     # Get the angles 
-    theta = np.linspace(0, 2*math.pi, num = divs)
+    theta = np.linspace(0, 2*math.pi, num = divs, endpoint = False)
     # x^2 / a^2 + y^2 / b^2 = 1
     # foci are at +/- c, which is +/- sqrt(a^2 - b^2)
-    
-    
+    pt_x = major_len * np.cos(theta) + np.sqrt(major_len**2 - minor_len**2)
+    pt_y = minor_len * np.sin(theta) 
+    '''
     #In polar coordinates, the equation of the ellipse is:
-    pt_radius = minor_len / np.sqrt(1 - (ecc * np.cos(theta))**2)
+    #pt_radius = minor_len / np.sqrt(1 - ecc_sq * np.cos(theta)**2)
+    #pt_radius = minor_len / np.sqrt(1 - ecc_sq * np.cos(theta))
+    pt_radius = minor_len * (1 - ecc_sq) / (1 - ecc * np.cos(theta))
     # We must also shift by c = sqrt(a^2 - b^2) so it is centered the left focus point. 
-    pt_x = pt_radius * np.cos(theta) + math.sqrt(major_len**2 - minor_len**2)
+    #ellipse_c = np.sqrt(max(minor_len, major_len)**2 + min(minor_len, major_len)**2)
+    ellipse_c = np.sqrt(major_len**2 - minor_len**2)
+    #pt_x = pt_radius * np.cos(theta) + math.sqrt(major_len**2 - minor_len**2)
+    pt_x = pt_radius * np.cos(theta)
     pt_y = pt_radius * np.sin(theta)
+    '''
     if(log):
         print("x coord shape:", pt_x.shape)
         print("y coord shape:", pt_y.shape)
@@ -76,19 +87,24 @@ def hull_diff(a_pts, b_pts, log = False):
 '''
 Given a desired cross-section, find an ellipse with a cross-section that approximates it (using least_squares)
 '''
-def fit_desired(desired_cross, start_minor = 0.25, start_major = 0.75):
+def fit_desired(desired_cross, start_minor = 0.45, start_major = 0.75, start_ang = math.pi / 8):
     # Given the parameters, find the cross-section and calculate the area to the desired
     def fit_func(u):
+        #min_rad = min(u[0], u[1])
+        #max_rad = max(u[0], u[1])
         min_rad = u[0]
         max_rad = u[1]
-        ang =     u[2]
-        gen_ellipse = generateEllipse(min_rad, max_rad)
+        ang     = u[2]
+        gen_ellipse = generateEllipse(min_rad, max_rad, divs = 100)
         gen_cross_section = generateCrossSection(gen_ellipse, ang)
+        # we should also add a term to make sure minor and major don't BOTH approach zero. 
         return hull_diff(gen_cross_section, desired_cross)
     
-    opt_result = least_squares(fit_func, [start_minor, start_major, math.pi/4])
-    return opt_result.x
-
+    opt_result = least_squares(fit_func, [start_minor, start_major, start_ang])
+    rad_a, rad_b, angle = opt_result.x
+    min_rad = min(rad_a, rad_b)
+    max_rad = max(rad_a, rad_b)
+    return min_rad, max_rad, angle
 '''
 Given a singular ellipse and an inclination, generate an orbit.  
 '''
@@ -136,25 +152,29 @@ test_ellipse = False
 fitting = True
 single_orbit_plot = False
 
+outer_radius = 0.7
 num_objs = 25
 
 if(__name__ == "__main__"):
     if(test_ellipse):
-        (min_rad, max_rad, ang) = (1, 2, math.pi/6)
-        our_ellipse = generateEllipse(1, 2, log=True)
-        cross_section = generateCrossSection(our_ellipse, math.pi/6, log = True)
+        (min_rad, max_rad, ang) = (1, 3, math.pi/6)
+        test_ellipse = generateEllipse(1, 2, log=True)
+        print("test ellipse shape:", test_ellipse.shape)
+        cross_section = generateCrossSection(test_ellipse, math.pi/6, log = True)
+        ellipse = np.stack((test_ellipse[0], test_ellipse[1], np.zeros_like(test_ellipse[0])))
     
-    outer_radius = 0.45
     # Generate the cross-section we want to fit to:
     circ_theta = np.linspace(0, 2*math.pi, 99)
     circ_x = outer_radius * np.cos(circ_theta) + 1
     circ_y = outer_radius * np.sin(circ_theta)
     desired_cross = np.vstack((circ_x, circ_y))
     
+    # the starting parameters for fitting should match the Villerau circle. 
+    
     # Find the difference between our generated ellipse cross-section and the desired cross-section
     #difference = hull_diff(cross_section, desired_cross, log=True)
     if(fitting):
-        best_params = fit_desired(desired_cross)
+        best_params = fit_desired(desired_cross, start_minor = 1, start_major = 1 + outer_radius, start_ang=np.arcsin(outer_radius))
         print("best parameters:", best_params)
         (min_rad, max_rad, ang) = best_params
         best_ellipse = generateEllipse(best_params[0], best_params[1])
@@ -168,7 +188,9 @@ if(__name__ == "__main__"):
     if(single_orbit_plot):
         fig = plt.figure()
         ax = fig.add_subplot(projection='3d')
+        ax.set_box_aspect((np.ptp(single_orbit[0]), np.ptp(single_orbit[1]), np.ptp(single_orbit[2])))
         ax.scatter(single_orbit[0], single_orbit[1], single_orbit[2])
+        ax.scatter(0,0,0, c='red')
         
     else:
         all_orbits, labels = surfaceRevolution(single_orbit, num_objs, log = True, matrix=True)
