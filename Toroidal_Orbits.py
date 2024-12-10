@@ -5,9 +5,6 @@ from scipy.spatial.transform import Rotation as R
 from scipy.optimize import least_squares
 from scipy.spatial import distance
 
-
-
-
 '''
 Given the length of the minor and major axes, generate the set of points for an ellipse centered on it's right focus.  
 "divs" is the number of points created, unevenly spaced on the ellipse. 
@@ -25,18 +22,6 @@ def generateEllipse(minor_len, major_len, divs=100, log=False):
     # foci are at +/- c, which is +/- sqrt(a^2 - b^2)
     pt_x = major_len * np.cos(theta) + np.sqrt(major_len**2 - minor_len**2)
     pt_y = minor_len * np.sin(theta) 
-    '''
-    #In polar coordinates, the equation of the ellipse is:
-    #pt_radius = minor_len / np.sqrt(1 - ecc_sq * np.cos(theta)**2)
-    #pt_radius = minor_len / np.sqrt(1 - ecc_sq * np.cos(theta))
-    pt_radius = minor_len * (1 - ecc_sq) / (1 - ecc * np.cos(theta))
-    # We must also shift by c = sqrt(a^2 - b^2) so it is centered the left focus point. 
-    #ellipse_c = np.sqrt(max(minor_len, major_len)**2 + min(minor_len, major_len)**2)
-    ellipse_c = np.sqrt(major_len**2 - minor_len**2)
-    #pt_x = pt_radius * np.cos(theta) + math.sqrt(major_len**2 - minor_len**2)
-    pt_x = pt_radius * np.cos(theta)
-    pt_y = pt_radius * np.sin(theta)
-    '''
     if(log):
         print("x coord shape:", pt_x.shape)
         print("y coord shape:", pt_y.shape)
@@ -94,9 +79,24 @@ def hull_diff(a_pts, b_pts, log = False):
     return tot_dist
 
 '''
+Given a set of 2D points, calculate the area difference between them and a centered circle with radius "circle_radius". 
+X: a set of 2D points, centered at approximately "circle_center"
+(circle_radius, circle_center): the parameters of the circle we compare to. 
+absolute: whether or not we calculated the signed area (interior = negative, exterior = positive) or the absolute area (both are positive)  
+'''
+def hull_circle_diff(X, circle_radius, circle_center = np.array([1,0])[:, np.newaxis], log = False, absolute = True):
+    # Calculate the distance between each point, and the circle's center. 
+    X_dist = np.linalg.norm(X - circle_center, axis = 0)
+    result = np.sum(X_dist) - circle_radius * X.shape[1]
+    if(log):
+        print("X distance shape:", X_dist.shape)
+        print("X distance sum:", np.sum(X_dist))
+    return result
+
+'''
 Given a set of 2D points, separate them into points inside and outside a circle with radius "circle_radius".
 For each point, calculate ||x|| - circle radius.
-Points outside contribute this into the positive, points inside contribute this to the negative. 
+Points outside contribute this to positive area, points inside contribute to negative area.
 
 X: a set of 2D points, centered on the origin. 
 
@@ -106,6 +106,10 @@ def hull_signed_circle_dist(X, circle_radius, log = False):
     #pos_area = 0
     #neg_area = 0
     pt_magnitudes = np.linalg.norm(X, axis = 0)
+    # We should split each of these into areas of an arc, since points further away from the center contain more area. 
+    # Currently, it approximates theta * (k - j)
+    # The area of an arc with angle theta for r in [j,k] is:
+    # 1/2 * theta * (k^2 - j^2) = 1/2 * theta * (k + j) * (k - j)
     interior_pts = X[:, pt_magnitudes <= circle_radius]
     exterior_pts = X[:, pt_magnitudes >= circle_radius]
     num_interior = np.size(interior_pts, axis = 1)
@@ -115,10 +119,17 @@ def hull_signed_circle_dist(X, circle_radius, log = False):
         print("exterior pts shape:", exterior_pts.shape)
     interior_tot = np.sum(np.linalg.norm(interior_pts, axis = 0))
     exterior_tot = np.sum(np.linalg.norm(exterior_pts, axis = 0))
-    pos_area = exterior_tot - circle_radius * num_exterior
-    neg_area = interior_tot - circle_radius * num_interior
+    pos_area = exterior_tot  - circle_radius * num_exterior
+    neg_area = -interior_tot + circle_radius * num_interior
     
     return (pos_area, neg_area)
+
+def hull_signed_circle_area(X, circle_radius, log = False):
+    # the length / magnitude for each point is:
+    pt_magnitudes = np.linalg.norm(X, axis = 0)
+    # the length / magnitude of the circle is always 'circle_radius'
+    
+
 
 '''
 Given a desired cross-section, find an ellipse with a cross-section that approximates it (using least_squares)
@@ -142,6 +153,30 @@ def fit_desired(desired_cross, start_minor = 1, start_major = 1.0025, start_ang 
     min_rad = min(rad_a, rad_b)
     max_rad = max(rad_a, rad_b)
     return min_rad, max_rad, angle
+
+'''
+Given a desired circle with radius "circle_radius" around (1,0), find an ellipse orbit with a cross-section that approximates it (using least_squares)
+'''
+def fit_desired_circle(circle_radius, start_minor = 1, start_major = 1.0025, start_ang = math.pi/8, ellipse_divs = 100):
+    # Given the parameters, find the cross-section and calculate the area to the desired
+    def fit_func(u):
+        #min_rad = min(u[0], u[1])
+        #max_rad = max(u[0], u[1])
+        min_rad = u[0]
+        max_rad = u[1]
+        ang     = u[2]
+        gen_ellipse = generateEllipse(min_rad, max_rad, divs = ellipse_divs)
+        gen_cross_section = generateCrossSection(gen_ellipse, ang)
+        # we should also add a term to make sure minor and major don't BOTH approach zero. 
+        # we should also add a term to make sure minor_rad < major_rad. something like math.inf * (major_rad < minor_rad)
+        #return np.sum(hull_signed_circle_dist(gen_cross_section, circle_radius))
+        return hull_circle_diff(gen_cross_section, circle_radius)
+    
+    opt_result = least_squares(fit_func, [start_minor, start_major, start_ang])
+    rad_a, rad_b, angle = opt_result.x
+    min_rad = min(rad_a, rad_b)
+    max_rad = max(rad_a, rad_b)
+    return min_rad, max_rad, angle    
 '''
 Given a singular ellipse and an inclination, generate an orbit.  
 '''
@@ -153,13 +188,13 @@ def generateOrbit(ellipse, ang, log = False):
     return rotation.as_matrix() @ ellipse
 
 def fitTorusOrbit(out_radius, ellipse_divs = 100, cross_divs = 99):
-    desired_cross = generateTorusCrossSection(out_radius, cross_divs)
+    #desired_cross = generateTorusCrossSection(out_radius, cross_divs)
     
     # the starting parameters for fitting should match the Villerau circle. 
     
     # Find the difference between our generated ellipse cross-section and the desired cross-section
     #difference = hull_diff(cross_section, desired_cross, log = enable_logging)
-    best_params = fit_desired(desired_cross, start_ang=np.arcsin(out_radius), ellipse_divs = ellipse_divs)
+    best_params = fit_desired_circle(out_radius, start_ang=np.arcsin(out_radius), ellipse_divs = ellipse_divs)
     #print("best parameters:", best_params)
     (min_rad, max_rad, ang) = best_params
     
@@ -224,15 +259,16 @@ single_orbit_plot = False
 mult_orbit_plot = True
 
 calc_hull_dev = False
+calc_area = False
 calc_signed_area = True
 
 # Some other calculations are dependent on having an ellipse of best fit.
 # this includes the variables best_ellipse, ellipse, and best_cross_section
-fitting = False or (single_orbit_plot or mult_orbit_plot) or calc_signed_area
+fitting = False or (single_orbit_plot or mult_orbit_plot) or calc_signed_area or calc_area
 
+circle_fitting = False
 
-
-outer_radius = 0.9
+outer_radius = 0.5
 num_objs = 25
 cross_divs = 99
 
@@ -252,7 +288,10 @@ if(__name__ == "__main__"):
     # Find the difference between our generated ellipse cross-section and the desired cross-section
     #difference = hull_diff(cross_section, desired_cross, log = enable_logging)
     if(fitting):
-        best_params = fit_desired(desired_cross, start_ang=np.arcsin(outer_radius))
+        if(circle_fitting):
+            best_params = fit_desired_circle(outer_radius, start_ang=np.arcsin(outer_radius))
+        else:
+            best_params = fit_desired(desired_cross, start_ang=np.arcsin(outer_radius))
         print("best parameters:", best_params)
         (min_rad, max_rad, ang) = best_params
         
@@ -281,8 +320,8 @@ if(__name__ == "__main__"):
         # What is the process we follow for each radius?
         
         for curr_rad in outer_radii:
-            curr_desired_cross = generateTorusCrossSection(curr_rad)
-            curr_params = fit_desired(curr_desired_cross, start_ang=np.arcsin(curr_rad))
+            #curr_desired_cross = generateTorusCrossSection(curr_rad)
+            curr_params = fit_desired_circle(curr_rad, start_ang=np.arcsin(curr_rad))
             (min_rad, max_rad, ang) = curr_params
             curr_ellipse = generateEllipse(min_rad, max_rad)
             curr_cross_section = generateCrossSection(curr_ellipse, ang) 
@@ -302,6 +341,10 @@ if(__name__ == "__main__"):
             curr_hull_dev = hull_diff(curr_cross_section, curr_desired_cross)
             each_hull_dev.append(curr_hull_dev)
         plt.scatter(outer_radii, each_hull_dev)
+    
+    if(calc_area):
+        tot_area = hull_circle_diff(best_cross_section, outer_radius, log = True)
+        print("total area difference:", tot_area)
             
     if(calc_signed_area):
         cross_section_center = np.mean(best_cross_section, axis = 1)
