@@ -215,7 +215,13 @@ def fitTorusOrbit(out_radius, ellipse_divs = 100, cross_divs = 99):
         }
     return result
 
-def surfaceRevolution(in_pts, num_rots, log = False, matrix = False):
+'''
+Given a set of 3d points, rotate them around the z-axis to generate more copies
+num_rots: the number of rotations to perform
+matrix: if false, the resulting points are contiguous and have shape [3, n * num_rots]. 
+        if true,  the resulting points have the shape [3, n, num_rots]
+'''
+def surfaceRevolution(in_pts, num_rots, log = False, matrix = True):
     all_theta = np.linspace(0, 2*math.pi, num_rots, endpoint = False)
     all_rots = R.from_euler('z', all_theta)
     if(log):
@@ -247,30 +253,38 @@ def surfaceRevolution(in_pts, num_rots, log = False, matrix = False):
         print("labels flat shape:", labels_flat.shape)
     
     return (all_orbits_flat, labels_flat)
+
+
+
+### PROPERTIES ###
     
 enable_logging = False
-
 
 # Parameters for the outputs / plots we will generate
 
 test_ellipse = False
 
 single_orbit_plot = False
-mult_orbit_plot = True
+mult_orbit_plot = False
+coordination_plot = True
+
+relative_motion_plot = True
 
 calc_hull_dev = False
 calc_area = False
-calc_signed_area = True
+calc_signed_area = False
 
 # Some other calculations are dependent on having an ellipse of best fit.
 # this includes the variables best_ellipse, ellipse, and best_cross_section
-fitting = False or (single_orbit_plot or mult_orbit_plot) or calc_signed_area or calc_area
+#fitting = False or single_orbit_plot or mult_orbit_plot or coordination_plot or calc_signed_area or calc_area
+fitting = not test_ellipse
 
 circle_fitting = False
 
-outer_radius = 0.5
-num_objs = 25
+outer_radius = 0.4
+num_objs = 3
 cross_divs = 99
+ellipse_divs = 100
 
 if(__name__ == "__main__"):
     if(test_ellipse):
@@ -289,9 +303,9 @@ if(__name__ == "__main__"):
     #difference = hull_diff(cross_section, desired_cross, log = enable_logging)
     if(fitting):
         if(circle_fitting):
-            best_params = fit_desired_circle(outer_radius, start_ang=np.arcsin(outer_radius))
+            best_params = fit_desired_circle(outer_radius, start_ang=np.arcsin(outer_radius), ellipse_divs = ellipse_divs)
         else:
-            best_params = fit_desired(desired_cross, start_ang=np.arcsin(outer_radius))
+            best_params = fit_desired(desired_cross, start_ang=np.arcsin(outer_radius), ellipse_divs = ellipse_divs)
         print("best parameters:", best_params)
         (min_rad, max_rad, ang) = best_params
         
@@ -302,7 +316,7 @@ if(__name__ == "__main__"):
         eccentricity = 1 - math.sqrt(min_rad**2 / max_rad**2)
         inclination = ang
         
-        best_ellipse = generateEllipse(min_rad, max_rad)
+        best_ellipse = generateEllipse(min_rad, max_rad, divs = ellipse_divs)
         best_cross_section = generateCrossSection(best_ellipse, ang)
         # turn the ellipse into 3d
         ellipse = np.stack((best_ellipse[0], best_ellipse[1], np.zeros_like(best_ellipse[0])))
@@ -321,9 +335,9 @@ if(__name__ == "__main__"):
         
         for curr_rad in outer_radii:
             #curr_desired_cross = generateTorusCrossSection(curr_rad)
-            curr_params = fit_desired_circle(curr_rad, start_ang=np.arcsin(curr_rad))
+            curr_params = fit_desired_circle(curr_rad, start_ang=np.arcsin(curr_rad), ellipse_divs = ellipse_divs)
             (min_rad, max_rad, ang) = curr_params
-            curr_ellipse = generateEllipse(min_rad, max_rad)
+            curr_ellipse = generateEllipse(min_rad, max_rad, divs = ellipse_divs)
             curr_cross_section = generateCrossSection(curr_ellipse, ang) 
             
             if(False):
@@ -354,9 +368,9 @@ if(__name__ == "__main__"):
         print("positive (exterior) area:", pos_area)
         print("negative (interior) area:", neg_area)
     
-    # Given an ellipse and an angle, plot some number of objs in offset orbits
-    if(single_orbit_plot or mult_orbit_plot):
-        single_orbit = generateOrbit(ellipse, ang, log = enable_logging)
+    # Given our fit ellipse and an angle, plot some number of objs in offset orbits
+    single_orbit = generateOrbit(ellipse, ang, log = enable_logging)
+    
     #print("orbit shape:", single_orbit.shape)
     
     if(single_orbit_plot):
@@ -369,13 +383,14 @@ if(__name__ == "__main__"):
     if(mult_orbit_plot):
         all_orbits, labels = surfaceRevolution(single_orbit, num_objs, log = enable_logging, matrix=True)
         
-        # now do a 3D plot
+        # now do a 3D plot for the orbits
         fig = plt.figure(figsize = (14,6))
         ax1 = fig.add_subplot(1, 2, 1, projection='3d')
         
         ax1.set_box_aspect((np.ptp(all_orbits[0]), np.ptp(all_orbits[1]), np.ptp(all_orbits[2])))
         ax1.scatter(all_orbits[0], all_orbits[1], all_orbits[2], c = labels)
         
+        # do a 2D scatterplot for the y-z plane cross-section
         ax2 = fig.add_subplot(1, 2, 2)
         ax2.set_aspect(1)
         ax2.axline((1,0),(1.1,0), c='grey', zorder = 0)
@@ -387,8 +402,70 @@ if(__name__ == "__main__"):
         
         # Plot the center of our best-fit cross-section
         ax2.scatter(np.mean(best_cross_section[0]), np.mean(best_cross_section[1]), c='blue', marker ='s')
+    
+    
+    if(relative_motion_plot):
+        num_tracked_objs = 4
+        # the shape of all_orbits = [3, ellipse_divs, num_tracked_objs]
+        all_orbits, labels = surfaceRevolution(single_orbit, num_tracked_objs, log = enable_logging, matrix = True)
+
+        # Find equidistant points on the unit circle, which we will compare to the points
+        theta_range = np.arange(0, ellipse_divs+2)
+        #theta = np.linspace(0, 2 * math.pi, ellipse_divs+2, endpoint = False)
+        theta = 2 * math.pi * theta_range / len(theta_range)
+        # We add a +2 for testing, so we can differentiate in the shapes 
+        pts_x = np.cos(theta)
+        pts_y = np.sin(theta)
         
+        circle_pts = np.stack((pts_x, pts_y, np.zeros_like(theta)))
         
-        
+        if(False):
+            for i in range(0, len(theta)):
+                curr_circle_pt = circle_pts[:, i]
+                pass
+        else:
+            # For each point on the circle, find the closest point on each orbit.
+            # There are 3 coordinates for each point, 'ellipse_divs' points on the circle, and 'num_tracked_objs' different orbits. 
+            # Result has shape = [3, ellipse_divs, num_tracked_objs]
+            circle_closest = np.zeros((3, len(theta), num_tracked_objs))
+            
+            # We also want to associate each resulting point with the theta value it is closest to. 
+            #obj_labels = np.linspace(0, 1, num_tracked_objs)[np.newaxis, :]
+            #angle_labels = np.repeat(obj_labels, repeats = len(theta), axis = 0)
+            
+            # angle_labels has shape (len(theta), num_tracked_obs)
+            angle_labels = np.zeros((len(theta), num_tracked_objs))
+            
+            for i in range(0, num_tracked_objs):
+                # curr orbit to check is number 'i'
+                curr_orbit = all_orbits[:, :, i]
+                # circle_dists has shape (len(theta), ellipse_divs)
+                # circle_dists[i, j] is the distance between circle_pt[:, i] and curr_orbit[:, j]
+                circle_dists = distance.cdist(circle_pts.T, curr_orbit.T)
+                
+                # For each point on the circle, find the closest point indx in the orbit. 
+                # curr_closest_indx has shape: (len(theta),)
+                # for each point on the circle, it's the index of the closest point on the current orbit. 
+                curr_closest_indx = np.argmin(circle_dists, axis = 1)
+                if(True and (i == 0)):
+                    print("curr_orbit shape is:", curr_orbit.shape)
+                    print("circle_pts shape is:", circle_pts.shape)
+                    print("circle_dists shape is:", circle_dists.shape)
+                    print("curr closest indx shape is:", curr_closest_indx.shape)
+                curr_closest_pts = curr_orbit[:, curr_closest_indx]
+                circle_closest[:, :, i] = curr_closest_pts
+                #angle_labels[:, i] = theta[curr_closest_indx]
+                angle_labels[:, i] = theta
+            
+            print("circle_closest shape:", circle_closest.shape)
+            print("angle labels shape:", angle_labels.shape)
+            fig = plt.figure()
+            ax_circ = fig.add_subplot(projection='3d')
+            
+            circle_closest_flat = circle_closest.reshape((3, -1))
+            angle_labels_flat   = angle_labels.reshape((1, -1))
+            ax_circ.scatter(circle_pts[0], circle_pts[1], circle_pts[2], c = theta, cmap = 'viridis')
+            ax_circ.set_box_aspect((np.ptp(circle_closest_flat[0]), np.ptp(circle_closest_flat[1]), np.ptp(circle_closest_flat[2])))
+            ax_circ.scatter(circle_closest_flat[0], circle_closest_flat[1], circle_closest_flat[2], c = angle_labels_flat, cmap = 'viridis') 
         
     
