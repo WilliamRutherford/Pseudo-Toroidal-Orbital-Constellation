@@ -34,6 +34,20 @@ def generateTorusCrossSection(outer_radius, divs = 99):
     return np.vstack((circ_x, circ_y))    
 
 '''
+Given a set of 3d points, find their 2d cross-section using cylindrical coordinates. 
+X: has shape [3, n]
+
+Result R: has shape [2, n]
+R[1] = X[2]
+R[0,i] = sqrt(X[0,i,0]**2 + X[1,i,0])
+'''
+def crossSection(X):
+    # the height of our cross-section is the z coordinate. 
+    h_val = X[2]
+    mag = np.linalg.norm(X[0:2], axis = 0)
+    return np.vstack((mag, h_val))
+
+'''
 Given a 2D set of points, rotate it into the third (z) dimension by an angle, and find the cross-section. 
 cross-section x = distance from the z' axis
 cross-section y = distance projected onto z' axis
@@ -281,7 +295,7 @@ fitting = not test_ellipse
 
 circle_fitting = False
 
-outer_radius = 0.4
+outer_radius = 0.6
 num_objs = 3
 cross_divs = 99
 ellipse_divs = 100
@@ -406,11 +420,12 @@ if(__name__ == "__main__"):
     
     if(relative_motion_plot):
         num_tracked_objs = 4
+        
         # the shape of all_orbits = [3, ellipse_divs, num_tracked_objs]
         all_orbits, labels = surfaceRevolution(single_orbit, num_tracked_objs, log = enable_logging, matrix = True)
 
         # Find equidistant points on the unit circle, which we will compare to the points
-        theta_range = np.arange(0, ellipse_divs+2)
+        theta_range = np.arange(0, num_tracked_objs * ellipse_divs)
         #theta = np.linspace(0, 2 * math.pi, ellipse_divs+2, endpoint = False)
         theta = 2 * math.pi * theta_range / len(theta_range)
         # We add a +2 for testing, so we can differentiate in the shapes 
@@ -457,15 +472,27 @@ if(__name__ == "__main__"):
                 #angle_labels[:, i] = theta[curr_closest_indx]
                 angle_labels[:, i] = theta
             
+            # angle_labels[:, i] = theta[i]
+            # circle_closest[:, :, i] is the point in each orbit closest to circle_pts[:, i]
+            
+            # circle_centers has shape [3, len(theta)]
+            circle_centers = crossSection(np.mean(circle_closest, axis = 2))
+            
             print("circle_closest shape:", circle_closest.shape)
             print("angle labels shape:", angle_labels.shape)
             fig = plt.figure()
-            ax_circ = fig.add_subplot(projection='3d')
+            ax_circ = fig.add_subplot(1, 2, 1, projection='3d')
             
             circle_closest_flat = circle_closest.reshape((3, -1))
             angle_labels_flat   = angle_labels.reshape((1, -1))
             ax_circ.scatter(circle_pts[0], circle_pts[1], circle_pts[2], c = theta, cmap = 'viridis')
             ax_circ.set_box_aspect((np.ptp(circle_closest_flat[0]), np.ptp(circle_closest_flat[1]), np.ptp(circle_closest_flat[2])))
             ax_circ.scatter(circle_closest_flat[0], circle_closest_flat[1], circle_closest_flat[2], c = angle_labels_flat, cmap = 'viridis') 
+            
+            # Form a cross-section, of all points overlaid
+            ax_cross = fig.add_subplot(1, 2, 2)
+            closest_cyl = crossSection(circle_closest_flat)
+            ax_cross.scatter(closest_cyl[0], closest_cyl[1], c = angle_labels_flat, cmap = 'viridis')
+            ax_cross.scatter(circle_centers[0], circle_centers[1], c = theta, cmap = 'viridis')
         
     
