@@ -280,7 +280,6 @@ test_ellipse = False
 
 single_orbit_plot = False
 mult_orbit_plot = False
-coordination_plot = True
 
 relative_motion_plot = True
 
@@ -288,15 +287,14 @@ calc_hull_dev = False
 calc_area = False
 calc_signed_area = False
 
-# Some other calculations are dependent on having an ellipse of best fit.
+# Some other calculations are dependent on having an ellipse of best fit. 
 # this includes the variables best_ellipse, ellipse, and best_cross_section
-#fitting = False or single_orbit_plot or mult_orbit_plot or coordination_plot or calc_signed_area or calc_area
 fitting = not test_ellipse
 
 circle_fitting = False
 
 outer_radius = 0.5
-num_objs = 3
+num_objs = 25
 cross_divs = 99
 ellipse_divs = 100
 
@@ -398,14 +396,14 @@ if(__name__ == "__main__"):
         all_orbits, labels = surfaceRevolution(single_orbit, num_objs, log = enable_logging, matrix=True)
         
         # now do a 3D plot for the orbits
-        fig = plt.figure(figsize = (14,6))
-        ax1 = fig.add_subplot(1, 2, 1, projection='3d')
+        fig_mult = plt.figure('Multi-Orbit Plot', figsize = (14,6))
+        ax1 = fig_mult.add_subplot(1, 2, 1, projection='3d')
         
         ax1.set_box_aspect((np.ptp(all_orbits[0]), np.ptp(all_orbits[1]), np.ptp(all_orbits[2])))
         ax1.scatter(all_orbits[0], all_orbits[1], all_orbits[2], c = labels)
         
         # do a 2D scatterplot for the y-z plane cross-section
-        ax2 = fig.add_subplot(1, 2, 2)
+        ax2 = fig_mult.add_subplot(1, 2, 2)
         ax2.set_aspect(1)
         ax2.axline((1,0),(1.1,0), c='grey', zorder = 0)
         ax2.axline((1,0),(1,0.1), c='grey', zorder = 0)
@@ -437,77 +435,80 @@ if(__name__ == "__main__"):
      
         circle_pts = np.stack((np.cos(theta), np.sin(theta), np.zeros_like(theta)))
         
-        if(False):
-            for i in range(0, len(theta)):
-                curr_circle_pt = circle_pts[:, i]
-                pass
-        else:
-            # For each point on the circle, find the closest point on each orbit.
-            # There are 3 coordinates for each point, 'ellipse_divs' points on the circle, and 'num_tracked_objs' different orbits. 
-            # Result has shape = [3, ellipse_divs, num_tracked_objs]
-            circle_closest = np.zeros((3, len(theta), num_tracked_objs))
+        # For each point on the circle, find the closest point on each orbit.
+        # There are 3 coordinates for each point, 'ellipse_divs' points on the circle, and 'num_tracked_objs' different orbits. 
+        # Result has shape = [3, ellipse_divs, num_tracked_objs]
+        circle_closest = np.zeros((3, len(theta), num_tracked_objs))
+        
+        # We also want to associate each resulting point with the theta value it is closest to. 
+        #obj_labels = np.linspace(0, 1, num_tracked_objs)[np.newaxis, :]
+        #angle_labels = np.repeat(obj_labels, repeats = len(theta), axis = 0)
+        
+        # angle_labels has shape (len(theta), num_tracked_obs)
+        angle_labels = np.zeros((len(theta), num_tracked_objs))
+        
+        for i in range(0, num_tracked_objs):
+            # curr orbit to check is number 'i'
+            curr_orbit = all_orbits[:, :, i]
+            # circle_dists has shape (len(theta), ellipse_divs)
+            # circle_dists[i, j] is the distance between circle_pt[:, i] and curr_orbit[:, j]
+            circle_dists = distance.cdist(circle_pts.T, curr_orbit.T)
             
-            # We also want to associate each resulting point with the theta value it is closest to. 
-            #obj_labels = np.linspace(0, 1, num_tracked_objs)[np.newaxis, :]
-            #angle_labels = np.repeat(obj_labels, repeats = len(theta), axis = 0)
+            # For each point on the circle, find the closest point indx in the orbit. 
+            # curr_closest_indx has shape: (len(theta),)
+            # for each point on the circle, it's the index of the closest point on the current orbit. 
+            curr_closest_indx = np.argmin(circle_dists, axis = 1)
+            if(False and (i == 0)):
+                print("curr_orbit shape is:", curr_orbit.shape)
+                print("circle_pts shape is:", circle_pts.shape)
+                print("circle_dists shape is:", circle_dists.shape)
+                print("curr closest indx shape is:", curr_closest_indx.shape)
+            curr_closest_pts = curr_orbit[:, curr_closest_indx]
+            circle_closest[:, :, i] = curr_closest_pts
+            #angle_labels[:, i] = theta[curr_closest_indx]
+            angle_labels[:, i] = theta
+        
+        # angle_labels[:, i] = theta[i]
+        # circle_closest[:, :, i] is the point in each orbit closest to circle_pts[:, i]
+        
+        # circle_centers has shape [3, len(theta)]
+        circle_centers = crossSection(np.mean(circle_closest, axis = 2))
+        
+        if(enable_logging):
+            print("circle_closest shape:", circle_closest.shape)
+            print("angle labels shape:", angle_labels.shape)
+        fig_rel = plt.figure('Relative Orbital Motion', figsize = (14,6))
+        ax_circ = fig_rel.add_subplot(1, 2, 1, projection='3d')
+        
+        circle_closest_flat = circle_closest.reshape((3, -1))
+        angle_labels_flat   = angle_labels.reshape((1, -1))
+        ax_circ.scatter(circle_pts[0], circle_pts[1], circle_pts[2], c = theta, cmap = 'viridis')
+        ax_circ.set_box_aspect((np.ptp(circle_closest_flat[0]), np.ptp(circle_closest_flat[1]), np.ptp(circle_closest_flat[2])))
+        ax_circ.scatter(circle_closest_flat[0], circle_closest_flat[1], circle_closest_flat[2], c = angle_labels_flat, cmap = 'viridis') 
+        
+        # Form a cross-section, of all points overlaid
+        ax_cross = fig_rel.add_subplot(1, 2, 2)
+        ax_cross.set_aspect(1)
+        ax_cross.axline((1,0),(1.1,0), c='grey', zorder = 0)
+        ax_cross.axline((1,0),(1,0.1), c='grey', zorder = 0)            
+        closest_cyl = crossSection(circle_closest_flat)
+        ax_cross.scatter(closest_cyl[0], closest_cyl[1], c = angle_labels_flat, cmap = 'viridis')
+        ax_cross.scatter(circle_centers[0], circle_centers[1], c = theta, cmap = 'viridis')
+        
+        # Plot the center of a single orbit for comparison
+        single_orbit_center = np.mean(crossSection(single_orbit), axis = 1)
+        ax_cross.scatter(single_orbit_center[0], single_orbit_center[1], c = 'red')            
+        
+        # Also calculate the standard deviation for these avg points on the cross-section
+        closest_cyl_deviation = np.std(closest_cyl, axis = 1) 
+        print("Relative Motion cross-section std-deviation:", closest_cyl_deviation)
+        
+        # Also calculate the deviation laterally (angle before / after) of each corresponding sets of points 
+        # Something like np.std(arctan(circle_closest, axis = 2))
+        set_ang = np.arctan(circle_closest[0], circle_closest[1])
+        set_ang_avg_dev = np.mean(np.std(set_ang, axis = 1))
+        print("Relative Motion mean angular std-deviation:", set_ang_avg_dev)
             
-            # angle_labels has shape (len(theta), num_tracked_obs)
-            angle_labels = np.zeros((len(theta), num_tracked_objs))
-            
-            for i in range(0, num_tracked_objs):
-                # curr orbit to check is number 'i'
-                curr_orbit = all_orbits[:, :, i]
-                # circle_dists has shape (len(theta), ellipse_divs)
-                # circle_dists[i, j] is the distance between circle_pt[:, i] and curr_orbit[:, j]
-                circle_dists = distance.cdist(circle_pts.T, curr_orbit.T)
-                
-                # For each point on the circle, find the closest point indx in the orbit. 
-                # curr_closest_indx has shape: (len(theta),)
-                # for each point on the circle, it's the index of the closest point on the current orbit. 
-                curr_closest_indx = np.argmin(circle_dists, axis = 1)
-                if(False and (i == 0)):
-                    print("curr_orbit shape is:", curr_orbit.shape)
-                    print("circle_pts shape is:", circle_pts.shape)
-                    print("circle_dists shape is:", circle_dists.shape)
-                    print("curr closest indx shape is:", curr_closest_indx.shape)
-                curr_closest_pts = curr_orbit[:, curr_closest_indx]
-                circle_closest[:, :, i] = curr_closest_pts
-                #angle_labels[:, i] = theta[curr_closest_indx]
-                angle_labels[:, i] = theta
-            
-            # angle_labels[:, i] = theta[i]
-            # circle_closest[:, :, i] is the point in each orbit closest to circle_pts[:, i]
-            
-            # circle_centers has shape [3, len(theta)]
-            circle_centers = crossSection(np.mean(circle_closest, axis = 2))
-            
-            if(enable_logging):
-                print("circle_closest shape:", circle_closest.shape)
-                print("angle labels shape:", angle_labels.shape)
-            fig = plt.figure()
-            ax_circ = fig.add_subplot(1, 2, 1, projection='3d')
-            
-            circle_closest_flat = circle_closest.reshape((3, -1))
-            angle_labels_flat   = angle_labels.reshape((1, -1))
-            ax_circ.scatter(circle_pts[0], circle_pts[1], circle_pts[2], c = theta, cmap = 'viridis')
-            ax_circ.set_box_aspect((np.ptp(circle_closest_flat[0]), np.ptp(circle_closest_flat[1]), np.ptp(circle_closest_flat[2])))
-            ax_circ.scatter(circle_closest_flat[0], circle_closest_flat[1], circle_closest_flat[2], c = angle_labels_flat, cmap = 'viridis') 
-            
-            # Form a cross-section, of all points overlaid
-            ax_cross = fig.add_subplot(1, 2, 2)
-            ax_cross.set_aspect(1)
-            ax_cross.axline((1,0),(1.1,0), c='grey', zorder = 0)
-            ax_cross.axline((1,0),(1,0.1), c='grey', zorder = 0)            
-            closest_cyl = crossSection(circle_closest_flat)
-            ax_cross.scatter(closest_cyl[0], closest_cyl[1], c = angle_labels_flat, cmap = 'viridis')
-            ax_cross.scatter(circle_centers[0], circle_centers[1], c = theta, cmap = 'viridis')
-            
-            # Also calculate the standard deviation for these avg points on the cross-section
-            closest_cyl_deviation = np.std(closest_cyl, axis = 1) 
-            print("Relative Motion std-deviation:", closest_cyl_deviation)
-            
-            # Plot the center of a single orbit for comparison
-            single_orbit_center = np.mean(crossSection(single_orbit), axis = 1)
-            ax_cross.scatter(single_orbit_center[0], single_orbit_center[1], c = 'red')
+
         
     
