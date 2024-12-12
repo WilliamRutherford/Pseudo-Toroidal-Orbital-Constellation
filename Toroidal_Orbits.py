@@ -75,6 +75,8 @@ def generateCrossSection(ellipse, angle, log = False):
     '''
     return cross_section_pts
 
+### 2D X-Y PLANE AREA COMPARISONS ###
+
 '''
 Given two sets of 2D points, find an approximate difference between them.
 For all points in a, find the distance to the closest point in b, and sum over all a values. 
@@ -279,9 +281,10 @@ enable_logging = False
 test_ellipse = False
 
 single_orbit_plot = False
-mult_orbit_plot = False
+mult_orbit_plot = True
 
-relative_motion_plot = True
+relative_motion_plot = False
+closer_points_plot = False
 
 calc_hull_dev = False
 calc_area = False
@@ -392,6 +395,7 @@ if(__name__ == "__main__"):
         ax.scatter(single_orbit[0], single_orbit[1], single_orbit[2])
         ax.scatter(0,0,0, c='red')
         
+        
     if(mult_orbit_plot):
         all_orbits, labels = surfaceRevolution(single_orbit, num_objs, log = enable_logging, matrix=True)
         
@@ -414,10 +418,10 @@ if(__name__ == "__main__"):
         
         # Plot the center of our best-fit cross-section
         ax2.scatter(np.mean(best_cross_section[0]), np.mean(best_cross_section[1]), c='blue', marker ='s')
-    
+        plt.show()
     
     if(relative_motion_plot):
-        num_tracked_objs = 4
+        num_tracked_objs = 5
 
         # Determines whether we want to consider all points on the circle, or just a slice enough to contain a full cross-section
         part_circle = False
@@ -444,7 +448,7 @@ if(__name__ == "__main__"):
         #obj_labels = np.linspace(0, 1, num_tracked_objs)[np.newaxis, :]
         #angle_labels = np.repeat(obj_labels, repeats = len(theta), axis = 0)
         
-        # angle_labels has shape (len(theta), num_tracked_obs)
+        # angle_labels has shape (len(theta), num_tracked_objs)
         angle_labels = np.zeros((len(theta), num_tracked_objs))
         
         for i in range(0, num_tracked_objs):
@@ -468,8 +472,15 @@ if(__name__ == "__main__"):
             #angle_labels[:, i] = theta[curr_closest_indx]
             angle_labels[:, i] = theta
         
-        # angle_labels[:, i] = theta[i]
-        # circle_closest[:, :, i] is the point in each orbit closest to circle_pts[:, i]
+        # angle_labels[i, :] = theta[i]
+        
+        # circle_closest has shape [3, len(theta), num_tracked_objs]
+        
+        # circle_closest[:, i, :] is the points in each orbit closest to circle_pts[:, i]
+        # circle_closest axis 0: x or y coordinate
+        # circle_closest axis 1: angle on circle it's closest to (theta <-> circle_pts[:, theta])
+        # circle_closest axis 2: tracked object on orbit of         
+        
         
         # circle_centers has shape [3, len(theta)]
         circle_centers = crossSection(np.mean(circle_closest, axis = 2))
@@ -497,7 +508,8 @@ if(__name__ == "__main__"):
         
         # Plot the center of a single orbit for comparison
         single_orbit_center = np.mean(crossSection(single_orbit), axis = 1)
-        ax_cross.scatter(single_orbit_center[0], single_orbit_center[1], c = 'red')            
+        ax_cross.scatter(single_orbit_center[0], single_orbit_center[1], c = 'red')   
+        plt.show()         
         
         # Also calculate the standard deviation for these avg points on the cross-section
         closest_cyl_deviation = np.std(closest_cyl, axis = 1) 
@@ -505,10 +517,66 @@ if(__name__ == "__main__"):
         
         # Also calculate the deviation laterally (angle before / after) of each corresponding sets of points 
         # Something like np.std(arctan(circle_closest, axis = 2))
-        set_ang = np.arctan(circle_closest[0], circle_closest[1])
+        set_ang = np.arctan2(circle_closest[0], circle_closest[1])
         set_ang_avg_dev = np.mean(np.std(set_ang, axis = 1))
         print("Relative Motion mean angular std-deviation:", set_ang_avg_dev)
-            
-
         
-    
+        # We can also calculate this with respect to circle_pts[:, i] (angle theta[i]) compared to points in circle_closest[:, :, i]
+        
+        # circle_pts[:, i] x [0,0,1] is the same as circle_pts[:, i] rotated by pi/2 (90 deg) in the z axis. (we will do it from x to y axis)
+        # s = circle_pts @ [[0, -1],[1, 0]]
+        # or s = np.stack((-circle_pts[1], circle_pts[0]))
+        
+        #perp_vec has shape = [2, len(theta)]
+        perp_vec = np.stack((-circle_pts[1], circle_pts[0]))
+        
+        # relative_centered has shape = [2, len(theta), num_tracked_objs]
+        relative_centered = circle_closest[0:2] - circle_pts[0:2, :, np.newaxis]
+
+        # This makes a cool rotationally symmetric pattern:
+        # plt.scatter(relative_centered[0], relative_centered[1], c = np.repeat(theta[:, np.newaxis], repeats = num_tracked_objs, axis = 1))   
+        # the number of leaves is related to num_tracked_objs
+        
+        # Scalar Projection (dot product) of relative_centered onto perp_vec:
+        # relative_centered[0, :, i] * perp_vec[0, :] + relative_centered[1, :, i] * perp_vec[1, :]
+        # the result should have shape = [len(theta), num_tracked_objs]
+        scalar_proj = relative_centered[0, :, :] * perp_vec[0, :, np.newaxis] + relative_centered[1, :, :] * perp_vec[1, :, np.newaxis]
+        # proj_range has shape = (len(theta),)
+        proj_range  = np.ptp(scalar_proj, axis = 1)
+        proj_std    = np.std(scalar_proj, axis = 1)
+        # plt.scatter(theta, proj_range) has a similar fractal symmetry pattern to the one above
+        
+        # maximum deviation:
+        relative_max_diff = np.max(scalar_proj)
+        
+        if(closer_points_plot):
+            # Right now, we are selecting a point from each separate orbit to compare. 
+            # What if we look at all the points in the "closest" orbit, and see how many are closer than the closest points in other orbits?
+            
+            # We can just look at theta[0], or circle_pts[:, 0] which is [1, 0, 0]
+            compare_circle = circle_pts[:, 0]
+            # This is a point from each tracked orbit that is closest to circle_pts[:, 0] = [1, 0, 0]
+            # compare_pts has shape = [3, num_tracked_objs]
+            compare_pts = circle_closest[:, 0, :]
+            # What is the second closest point? What is the furthest point?
+            # Going with furthest:
+            furthest_dist = np.max(distance.cdist(compare_pts.T, compare_circle[np.newaxis,:]))
+            # Of all points, which is closer than the above?
+            
+            # For each tracked object, choose a colour. 
+            tracked_color_ang = np.linspace(0, 2*math.pi, num_tracked_objs, endpoint = False)
+            tracked_color = np.stack((np.cos(tracked_color_ang), np.sin(tracked_color_ang), np.zeros_like(tracked_color_ang))).T
+            
+            fig_closer = plt.figure('closer points')
+            ax_cl = fig_closer.add_subplot(projection='3d')
+            ax_cl.scatter(compare_circle[0], compare_circle[1], compare_circle[2], c = 'black')
+            
+            # Iterate through each tracked orbit, and plot those that are closer. 
+            for i in range(0, num_tracked_objs):
+                # calculate the distance to our one point
+                curr_orbit = all_orbits[:, :, i]
+                orbit_dist = np.linalg.norm(curr_orbit - compare_circle[:, np.newaxis], axis=0)
+                curr_closer = curr_orbit[:, orbit_dist <= furthest_dist]
+                ax_cl.scatter(curr_closer[0], curr_closer[1], curr_closer[2], tracked_color[i])
+            plt.show()
+            
