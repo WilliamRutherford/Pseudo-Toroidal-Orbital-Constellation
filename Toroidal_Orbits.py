@@ -34,6 +34,16 @@ def generateTorusCrossSection(outer_radius, divs = 99):
     return np.vstack((circ_x, circ_y))    
 
 '''
+Given a singular ellipse and an inclination, generate an orbit.  
+'''
+def generateOrbit(ellipse, ang, log = False):
+    rotation = R.from_euler('x', -ang)
+    if(log):
+        print("gen_orbit ellipse shape:", ellipse.shape)
+        print("rotation matrix shape:", rotation.as_matrix().shape)
+    return rotation.as_matrix() @ ellipse
+
+'''
 Given a set of 3d points, find their 2d cross-section using cylindrical coordinates. 
 X: has shape [3, n]
 
@@ -145,7 +155,7 @@ def hull_signed_circle_area(X, circle_radius, log = False):
     pt_magnitudes = np.linalg.norm(X, axis = 0)
     # the length / magnitude of the circle is always 'circle_radius'
     
-
+### LEAST-SQUARES FITTING ###
 
 '''
 Given a desired cross-section, find an ellipse with a cross-section that approximates it (using least_squares)
@@ -193,15 +203,6 @@ def fit_desired_circle(circle_radius, start_minor = 1, start_major = 1.0025, sta
     min_rad = min(rad_a, rad_b)
     max_rad = max(rad_a, rad_b)
     return min_rad, max_rad, angle    
-'''
-Given a singular ellipse and an inclination, generate an orbit.  
-'''
-def generateOrbit(ellipse, ang, log = False):
-    rotation = R.from_euler('x', -ang)
-    if(log):
-        print("gen_orbit ellipse shape:", ellipse.shape)
-        print("rotation matrix shape:", rotation.as_matrix().shape)
-    return rotation.as_matrix() @ ellipse
 
 def fitTorusOrbit(out_radius, ellipse_divs = 100, cross_divs = 99):
     #desired_cross = generateTorusCrossSection(out_radius, cross_divs)
