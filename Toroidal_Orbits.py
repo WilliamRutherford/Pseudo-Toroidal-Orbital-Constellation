@@ -33,6 +33,44 @@ def generateTorusCrossSection(outer_radius, divs = 99):
     circ_y = outer_radius * np.sin(circ_theta)
     return np.vstack((circ_x, circ_y))    
 
+### PARAMETRIC EQUATIONS ###
+
+'''
+Given the parameters of an ellipse, generate a parametric equation describing it. 
+
+parametricEllipse(...) : t -> np.array((2,1))
+or
+parametricEllipse(...) : t = np.array((n,)) -> np.array((2,n))
+t: either a single float, or a numpy array
+'''
+def parametricEllipse(minor_len, major_len, log=False):
+    
+    def create_ellipse(t):
+        return 
+    
+    return create_ellipse
+
+'''
+Given the parameters of an elliptical orbit, generate a parametric equation describing it. 
+
+parametricOrbit(...) : t -> np.array((3,1))
+or
+parametricOrbit(...) : t = np.array((n,)) -> np.array((3,n))
+t: either a single float, or a numpy array
+'''
+def parametricOrbit(minor_len, major_len, rot_ang, log=False):
+
+    # We truncate the rotation matrix, since we assume the z component is 0. this will also project it into 3d for us. 
+    rotation_matrix = R.from_euler('x', -rot_ang).as_matrix()[:,(0,1)]
+
+    if(log):
+        print("rotation matrix:", rotation_matrix)
+
+    def create_orbit(t):
+        return rotation_matrix @ np.vstack((major_len * math.cos(t), minor_len * math.sin(t)))
+
+    return create_orbit
+
 '''
 Given a singular ellipse and an inclination, generate an orbit.  
 '''
@@ -58,7 +96,7 @@ def crossSection(X):
     return np.vstack((mag, h_val))
 
 '''
-Given a 2D set of points, rotate it into the third (z) dimension by an angle, and find the cross-section. 
+Given a 2D set of points, rotate it into the third (z) dimension by an angle (around the x axis), and find the cross-section. 
 cross-section x = distance from the z' axis
 cross-section y = distance projected onto z' axis
 '''
@@ -67,7 +105,7 @@ def generateCrossSection(ellipse, angle, log = False):
     ellipse_3d = np.stack((ellipse[0], ellipse[1], np.zeros_like(ellipse[0])))
     # Form our unit vector z', which is in the y-z plane, the vector (0,0,1) rotated by our angle theta. 
     z_prime = np.array((0, np.sin(angle), np.cos(angle)))
-    # Project each point on the ellipse onto z', to get the cross-section y component. 
+    # Project each point on the ellipse onto z', to get the cross-section y (vertical) component. 
     yp_comp = z_prime @ ellipse_3d
     zp_proj = (z_prime[:, np.newaxis]) @ (yp_comp[:, np.newaxis]).T
     if(log):
@@ -313,8 +351,6 @@ if(__name__ == "__main__"):
     # Generate the cross-section we want to fit to:
     desired_cross = generateTorusCrossSection(outer_radius, cross_divs)
     
-    # the starting parameters for fitting should match the Villerau circle. 
-    
     # Find the difference between our generated ellipse cross-section and the desired cross-section
     #difference = hull_diff(cross_section, desired_cross, log = enable_logging)
     if(fitting):
@@ -350,7 +386,7 @@ if(__name__ == "__main__"):
         # What is the process we follow for each radius?
         
         for curr_rad in outer_radii:
-            #curr_desired_cross = generateTorusCrossSection(curr_rad)
+            curr_desired_cross = generateTorusCrossSection(curr_rad)
             curr_params = fit_desired_circle(curr_rad, start_ang=np.arcsin(curr_rad), ellipse_divs = ellipse_divs)
             (min_rad, max_rad, ang) = curr_params
             curr_ellipse = generateEllipse(min_rad, max_rad, divs = ellipse_divs)
