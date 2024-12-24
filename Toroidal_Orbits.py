@@ -37,6 +37,8 @@ def generateEllipse(minor_len, major_len, divs=100, log=False, endpoint = True):
 def generateTorusCrossSection(outer_radius, divs = 99):
     circ_theta = np.linspace(0, 2*math.pi, divs)
     circ_x = outer_radius * np.cos(circ_theta) + 1
+    if(outer_radius >= 1):
+        circ_x = np.abs(circ_x)
     circ_y = outer_radius * np.sin(circ_theta)
     return np.vstack((circ_x, circ_y))    
 
@@ -257,8 +259,10 @@ def fit_desired_circle(circle_radius, start_minor = 1, start_major = 1.0025, sta
     
     opt_result = least_squares(fit_func, [start_minor, start_major, start_ang])
     rad_a, rad_b, angle = opt_result.x
-    min_rad = min(rad_a, rad_b)
-    max_rad = max(rad_a, rad_b)
+    #min_rad = min(rad_a, rad_b)
+    #max_rad = max(rad_a, rad_b)
+    min_rad = rad_a
+    max_rad = rad_b
     return min_rad, max_rad, angle    
 
 def fitTorusOrbit(out_radius, ellipse_divs = 100, cross_divs = 99):
@@ -348,18 +352,18 @@ calc_hull_dev = False
 calc_area = False
 calc_signed_area = False
 
-multi_radius_calc = True
+multi_radius_calc = False
 
 # Some other calculations are dependent on having an ellipse of best fit. 
 # this includes the variables best_ellipse, ellipse, and best_cross_section
 fitting = not test_ellipse
 
-circle_fitting = False
+circle_fitting = True
 
-outer_radius = 0.65
+outer_radius = 1.2
 num_objs = 25
-cross_divs = 99
-ellipse_divs = 100
+ellipse_divs = 300
+cross_divs = ellipse_divs
 
 if(__name__ == "__main__"):
     if(test_ellipse):
@@ -376,7 +380,10 @@ if(__name__ == "__main__"):
     #difference = hull_diff(cross_section, desired_cross, log = enable_logging)
     if(fitting):
         if(circle_fitting):
-            best_params = fit_desired_circle(outer_radius, start_ang=np.arcsin(outer_radius), ellipse_divs = ellipse_divs)
+            if(outer_radius >= 1):
+                best_params = fit_desired_circle(outer_radius, start_ang=np.arcsin(1), ellipse_divs = ellipse_divs)
+            else:
+                best_params = fit_desired_circle(outer_radius, start_ang=np.arcsin(outer_radius), ellipse_divs = ellipse_divs)
         else:
             best_params = fit_desired(desired_cross, start_ang=np.arcsin(outer_radius), ellipse_divs = ellipse_divs)
         print("best parameters:", best_params)
