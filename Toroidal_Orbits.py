@@ -360,7 +360,7 @@ fitting = not test_ellipse
 
 circle_fitting = True
 
-outer_radius = 1.2
+outer_radius = 0.3
 num_objs = 25
 ellipse_divs = 300
 cross_divs = ellipse_divs
@@ -449,7 +449,11 @@ if(__name__ == "__main__"):
         angles = []
 
         for curr_rad in outer_radii:
-            curr_params = fit_desired_circle(curr_rad, start_ang=np.arcsin(curr_rad), ellipse_divs = ellipse_divs)
+            if(curr_rad >= 1):
+                curr_params = fit_desired_circle(curr_rad, start_ang=np.arcsin(1), ellipse_divs = ellipse_divs)
+            else:
+                curr_params = fit_desired_circle(curr_rad, start_ang=np.arcsin(curr_rad), ellipse_divs = ellipse_divs)
+            
             (min_rad, max_rad, ang) = curr_params
             # Calculate the error of our minimization, just like fit_desired_circle does
             gen_ellipse = generateEllipse(min_rad, max_rad, divs = ellipse_divs)
@@ -514,9 +518,9 @@ if(__name__ == "__main__"):
         fig_mult = plt.figure('Multi-Orbit Plot', figsize = (14,6))
         ax1 = fig_mult.add_subplot(1, 2, 1, projection='3d')
 
-        #all_orbits_flat = np.reshape(all_orbits, (3, -1))
+        all_orbits_flat = np.reshape(all_orbits, (3, -1))
         
-        ax1.set_box_aspect((np.ptp(all_orbits[0]), np.ptp(all_orbits[1]), np.ptp(all_orbits[2])))
+        ax1.set_box_aspect((np.ptp(all_orbits_flat[0]), np.ptp(all_orbits_flat[1]), np.ptp(all_orbits_flat[2])))
         if(False):
             ax1.scatter(all_orbits[0], all_orbits[1], all_orbits[2], c = labels)
         else:
