@@ -9,7 +9,7 @@ from scipy.spatial import distance
 Given the length of the minor and major axes, generate the set of points for an ellipse centered on it's right focus.  
 "divs" is the number of points created, unevenly spaced on the ellipse. 
 '''
-def generateEllipse(minor_len, major_len, divs=100, log=False):
+def generateEllipse(minor_len, major_len, divs=100, log=False, endpoint = True):
     #if(minor_len > major_len):
         #print("minor length has exceeded major length")
     '''
@@ -17,11 +17,18 @@ def generateEllipse(minor_len, major_len, divs=100, log=False):
     ecc_sq = np.abs(1 - (minor_len / major_len)**2)
     '''
     # Get the angles 
-    theta = np.linspace(0, 2*math.pi, num = divs, endpoint = False)
+    theta = np.linspace(0, 2*math.pi, num = divs, endpoint = endpoint)
     # x^2 / a^2 + y^2 / b^2 = 1
     # foci are at +/- c, which is +/- sqrt(a^2 - b^2)
-    pt_x = major_len * np.cos(theta) + np.sqrt(major_len**2 - minor_len**2)
+    #pt_x = major_len * np.cos(theta) + np.sqrt(major_len**2 - minor_len**2)
+    pt_x = major_len * np.cos(theta)
     pt_y = minor_len * np.sin(theta) 
+    # Accounting for the possibility that the axes have flipped (minor len > major len)
+    if(major_len > minor_len):
+        pt_x += np.sqrt(major_len**2 - minor_len**2)
+    else:
+        pt_y += np.sqrt(minor_len**2 - major_len**2)
+
     if(log):
         print("x coord shape:", pt_x.shape)
         print("y coord shape:", pt_y.shape)
@@ -100,7 +107,7 @@ Given a 2D set of points, rotate it into the third (z) dimension by an angle (ar
 cross-section x = distance from the z' axis
 cross-section y = distance projected onto z' axis
 '''
-def generateCrossSection(ellipse, angle, log = False):
+def generateOrbitCrossSection(ellipse, angle, log = False):
     # Project our ellipse into 3D, keeping it in the x-y plane
     ellipse_3d = np.stack((ellipse[0], ellipse[1], np.zeros_like(ellipse[0])))
     # Form our unit vector z', which is in the y-z plane, the vector (0,0,1) rotated by our angle theta. 
@@ -144,6 +151,8 @@ def hull_diff(a_pts, b_pts, log = False):
 
 '''
 Given a set of 2D points, calculate the area difference between them and a centered circle with radius "circle_radius". 
+This treats the area difference as arcs; points further from the center are penalized more. 
+
 X: a set of 2D points, centered at approximately "circle_center"
 (circle_radius, circle_center): the parameters of the circle we compare to. 
 absolute: whether or not we calculated the signed area (interior = negative, exterior = positive) or the absolute area (both are positive)  
@@ -151,11 +160,21 @@ absolute: whether or not we calculated the signed area (interior = negative, ext
 def hull_circle_diff(X, circle_radius, circle_center = np.array([1,0])[:, np.newaxis], log = False, absolute = True):
     # Calculate the distance between each point, and the circle's center. 
     X_dist = np.linalg.norm(X - circle_center, axis = 0)
-    result = np.sum(X_dist) - circle_radius * X.shape[1]
+    # Subtract the circle radius, to get their difference
+    # We take distances squared, to approximate the arc of a circle. (like pi * r^2)
+    result = X_dist**2 - (circle_radius * np.ones_like(X_dist))**2
+    if(absolute):
+        result = np.abs(result)
+
+    # What if we want to calculate the area as an arc?
+    # The angular amount dedicated to each point, which normalizes the area for differing numbers of X points. 
+    arc_ang = 2 * math.pi / X.shape[1]
+    result = result / arc_ang
+
     if(log):
         print("X distance shape:", X_dist.shape)
         print("X distance sum:", np.sum(X_dist))
-    return result
+    return np.sum(result)
 
 '''
 Given a set of 2D points, separate them into points inside and outside a circle with radius "circle_radius".
@@ -207,7 +226,7 @@ def fit_desired(desired_cross, start_minor = 1, start_major = 1.0025, start_ang 
         max_rad = u[1]
         ang     = u[2]
         gen_ellipse = generateEllipse(min_rad, max_rad, divs = ellipse_divs)
-        gen_cross_section = generateCrossSection(gen_ellipse, ang)
+        gen_cross_section = generateOrbitCrossSection(gen_ellipse, ang)
         # we should also add a term to make sure minor and major don't BOTH approach zero. 
         # we should also add a term to make sure minor_rad < major_rad. something like math.inf * (major_rad < minor_rad)
         return hull_diff(gen_cross_section, desired_cross)
@@ -230,7 +249,7 @@ def fit_desired_circle(circle_radius, start_minor = 1, start_major = 1.0025, sta
         max_rad = u[1]
         ang     = u[2]
         gen_ellipse = generateEllipse(min_rad, max_rad, divs = ellipse_divs)
-        gen_cross_section = generateCrossSection(gen_ellipse, ang)
+        gen_cross_section = generateOrbitCrossSection(gen_ellipse, ang)
         # we should also add a term to make sure minor and major don't BOTH approach zero. 
         # we should also add a term to make sure minor_rad < major_rad. something like math.inf * (major_rad < minor_rad)
         #return np.sum(hull_signed_circle_dist(gen_cross_section, circle_radius))
@@ -329,13 +348,15 @@ calc_hull_dev = False
 calc_area = False
 calc_signed_area = False
 
+multi_radius_calc = True
+
 # Some other calculations are dependent on having an ellipse of best fit. 
 # this includes the variables best_ellipse, ellipse, and best_cross_section
 fitting = not test_ellipse
 
 circle_fitting = False
 
-outer_radius = 0.5
+outer_radius = 0.65
 num_objs = 25
 cross_divs = 99
 ellipse_divs = 100
@@ -345,7 +366,7 @@ if(__name__ == "__main__"):
         (min_rad, max_rad, ang) = (1, 3, math.pi/6)
         test_ellipse = generateEllipse(1, 2, log = enable_logging)
         print("test ellipse shape:", test_ellipse.shape)
-        cross_section = generateCrossSection(test_ellipse, math.pi/6, log = enable_logging)
+        cross_section = generateOrbitCrossSection(test_ellipse, math.pi/6, log = enable_logging)
         ellipse = np.stack((test_ellipse[0], test_ellipse[1], np.zeros_like(test_ellipse[0])))
     
     # Generate the cross-section we want to fit to:
@@ -369,7 +390,7 @@ if(__name__ == "__main__"):
         inclination = ang
         
         best_ellipse = generateEllipse(min_rad, max_rad, divs = ellipse_divs)
-        best_cross_section = generateCrossSection(best_ellipse, ang)
+        best_cross_section = generateOrbitCrossSection(best_ellipse, ang)
         # turn the ellipse into 3d
         ellipse = np.stack((best_ellipse[0], best_ellipse[1], np.zeros_like(best_ellipse[0])))
         ellipse_flat = best_ellipse
@@ -390,7 +411,7 @@ if(__name__ == "__main__"):
             curr_params = fit_desired_circle(curr_rad, start_ang=np.arcsin(curr_rad), ellipse_divs = ellipse_divs)
             (min_rad, max_rad, ang) = curr_params
             curr_ellipse = generateEllipse(min_rad, max_rad, divs = ellipse_divs)
-            curr_cross_section = generateCrossSection(curr_ellipse, ang) 
+            curr_cross_section = generateOrbitCrossSection(curr_ellipse, ang) 
             
             if(False):
                 plt.scatter(curr_cross_section[0], curr_cross_section[1], c = np.array([curr_rad]*100))
@@ -408,6 +429,47 @@ if(__name__ == "__main__"):
             each_hull_dev.append(curr_hull_dev)
         plt.scatter(outer_radii, each_hull_dev)
     
+    if(multi_radius_calc):
+        test_num = 50
+        # Generate all outer radii we will fit for:
+        outer_radii = list(np.linspace(0.05, 0.95, test_num))
+
+        # what values do we want to look at?
+        # result from hull_circle_diff() or, the error of our minimization
+        fit_error = []
+        major_radii = []
+        minor_radii = []
+        angles = []
+
+        for curr_rad in outer_radii:
+            curr_params = fit_desired_circle(curr_rad, start_ang=np.arcsin(curr_rad), ellipse_divs = ellipse_divs)
+            (min_rad, max_rad, ang) = curr_params
+            # Calculate the error of our minimization, just like fit_desired_circle does
+            gen_ellipse = generateEllipse(min_rad, max_rad, divs = ellipse_divs)
+            gen_cross_section = generateOrbitCrossSection(gen_ellipse, ang)
+            fit_error.append(hull_circle_diff(gen_cross_section, curr_rad))
+            
+            major_radii.append(max_rad)
+            minor_radii.append(min_rad)
+            angles.append(ang)
+
+        major_radii = np.array(major_radii)
+
+        fig,(axr, axa, axe) = plt.subplots(1,3)
+
+        axr.title.set_text("major & minor radius")
+        axr.scatter(outer_radii, major_radii, c = 'blue')
+        # The orbital period in terms of the central orbit (r = 1)
+        # plt.scatter(outer_radii, major_radii**(3/2), c = 'red')
+        axr.scatter(outer_radii, minor_radii, c = 'red')
+
+        axa.title.set_text("Orbital Angle / Inclination")
+        axa.scatter(outer_radii, angles)
+
+        axe.title.set_text("Fit error hull_circle_diff")
+        axe.scatter(outer_radii, fit_error)
+        axe.axline(xy1 = (0,0), slope = 0, c = 'black')
+
     if(calc_area):
         tot_area = hull_circle_diff(best_cross_section, outer_radius, log = True)
         print("total area difference:", tot_area)
@@ -436,13 +498,24 @@ if(__name__ == "__main__"):
     if(mult_orbit_plot):
         all_orbits, labels = surfaceRevolution(single_orbit, num_objs, log = enable_logging, matrix=True)
         
+        colors_theta = np.linspace(0, 2 * math.pi, num_objs)
+        label_colors = np.stack((np.cos(colors_theta), np.sin(colors_theta), np.zeros_like(colors_theta))) / 2 + np.array([[1/2],[1/2],[0]])
+
+        #label_colors = np.repeat(label_colors, num_objs, axis = 1)
+
         # now do a 3D plot for the orbits
         fig_mult = plt.figure('Multi-Orbit Plot', figsize = (14,6))
         ax1 = fig_mult.add_subplot(1, 2, 1, projection='3d')
+
+        #all_orbits_flat = np.reshape(all_orbits, (3, -1))
         
         ax1.set_box_aspect((np.ptp(all_orbits[0]), np.ptp(all_orbits[1]), np.ptp(all_orbits[2])))
-        ax1.scatter(all_orbits[0], all_orbits[1], all_orbits[2], c = labels)
-        
+        if(False):
+            ax1.scatter(all_orbits[0], all_orbits[1], all_orbits[2], c = labels)
+        else:
+            for i in range(0, num_objs):
+                ax1.plot(all_orbits[0,:,i],all_orbits[1,:,i],all_orbits[2,:,i], c = label_colors[:,i])
+
         # do a 2D scatterplot for the y-z plane cross-section
         ax2 = fig_mult.add_subplot(1, 2, 2)
         ax2.set_aspect(1)
@@ -455,7 +528,7 @@ if(__name__ == "__main__"):
         
         # Plot the center of our best-fit cross-section
         ax2.scatter(np.mean(best_cross_section[0]), np.mean(best_cross_section[1]), c='blue', marker ='s')
-        plt.show()
+        #plt.show()
     
     if(relative_motion_plot):
         num_tracked_objs = 5
@@ -546,7 +619,7 @@ if(__name__ == "__main__"):
         # Plot the center of a single orbit for comparison
         single_orbit_center = np.mean(crossSection(single_orbit), axis = 1)
         ax_cross.scatter(single_orbit_center[0], single_orbit_center[1], c = 'red')   
-        plt.show()         
+        #plt.show()         
         
         # Also calculate the standard deviation for these avg points on the cross-section
         closest_cyl_deviation = np.std(closest_cyl, axis = 1) 
@@ -615,5 +688,6 @@ if(__name__ == "__main__"):
                 orbit_dist = np.linalg.norm(curr_orbit - compare_circle[:, np.newaxis], axis=0)
                 curr_closer = curr_orbit[:, orbit_dist <= furthest_dist]
                 ax_cl.scatter(curr_closer[0], curr_closer[1], curr_closer[2], tracked_color[i])
-            plt.show()
             
+            
+plt.show()
