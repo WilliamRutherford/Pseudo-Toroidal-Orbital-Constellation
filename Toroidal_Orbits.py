@@ -4,6 +4,7 @@ import math
 from scipy.spatial.transform import Rotation as R
 from scipy.optimize import least_squares
 from scipy.spatial import distance
+from scipy.stats import linregress
 
 '''
 Given the length of the minor and major axes, generate the set of points for an ellipse centered on it's right focus.  
@@ -343,7 +344,7 @@ enable_logging = False
 test_ellipse = False
 
 single_orbit_plot = False
-mult_orbit_plot = True
+mult_orbit_plot = False
 
 relative_motion_plot = False
 closer_points_plot = False
@@ -352,7 +353,7 @@ calc_hull_dev = False
 calc_area = False
 calc_signed_area = False
 
-multi_radius_calc = False
+multi_radius_calc = True
 
 # Some other calculations are dependent on having an ellipse of best fit. 
 # this includes the variables best_ellipse, ellipse, and best_cross_section
@@ -480,6 +481,22 @@ if(__name__ == "__main__"):
         axe.title.set_text("Fit error hull_circle_diff")
         axe.scatter(outer_radii, fit_error)
         axe.axline(xy1 = (0,0), slope = 0, c = 'black')
+
+        # We also want to fit a function to our "major radii" to see what pattern it follows. 
+        major_fit = np.polynomial.Polynomial.fit(outer_radii, major_radii, 2)
+        major_coefs = major_fit.convert().coef
+        print("outer-radius -> major_radius")
+        print(major_fit.convert())
+
+        fit_x, fit_y = major_fit.linspace(test_num, (np.min(outer_radii), np.max(outer_radii)))
+        axr.plot(fit_x, fit_y, c = 'gray')
+
+        # Now, fit a linear line to outer radii vs angle
+        slope, intercept, rvalue, _, _ = linregress(outer_radii, angles)
+        print("outer-radius -> inclination")
+        print(intercept, "+", slope,"x")
+        axa.plot(outer_radii, intercept * np.ones_like(outer_radii) + slope * np.array(outer_radii), c = 'gray')
+
 
     if(calc_area):
         tot_area = hull_circle_diff(best_cross_section, outer_radius, log = True)
