@@ -10,7 +10,7 @@ from scipy.stats import linregress
 Given the length of the minor and major axes, generate the set of points for an ellipse centered on it's right focus.  
 "divs" is the number of points created, unevenly spaced on the ellipse. 
 '''
-def generateEllipse(minor_len, major_len, divs=100, log=False, endpoint = True):
+def generateEllipse(minor_len : float, major_len : float, divs : int = 100, log : bool = False, endpoint : bool = False):
     #if(minor_len > major_len):
         #print("minor length has exceeded major length")
     '''
@@ -20,20 +20,89 @@ def generateEllipse(minor_len, major_len, divs=100, log=False, endpoint = True):
     # Get the angles 
     theta = np.linspace(0, 2*math.pi, num = divs, endpoint = endpoint)
     # x^2 / a^2 + y^2 / b^2 = 1
-    # foci are at +/- c, which is +/- sqrt(a^2 - b^2)
-    #pt_x = major_len * np.cos(theta) + np.sqrt(major_len**2 - minor_len**2)
+    # foci are at (c, 0) and (-c, 0) given c^2 = a^2 - b^2
+    # (c,0) is right focus, (-c,0) is the left focus
+    #pt_x = major_len * np.cos(theta) - np.sqrt(major_len**2 - minor_len**2)
     pt_x = major_len * np.cos(theta)
     pt_y = minor_len * np.sin(theta) 
     # Accounting for the possibility that the axes have flipped (minor len > major len)
     if(major_len > minor_len):
-        pt_x += np.sqrt(major_len**2 - minor_len**2)
+        pt_x -= np.sqrt(major_len**2 - minor_len**2)
     else:
-        pt_y += np.sqrt(minor_len**2 - major_len**2)
+        pt_y -= np.sqrt(minor_len**2 - major_len**2)
 
     if(log):
         print("x coord shape:", pt_x.shape)
         print("y coord shape:", pt_y.shape)
     return np.stack((pt_x, pt_y))
+
+'''
+Given a minor and major axis length for an ellipse, generate a set of points for an ellipse centered on it's right focus. 
+The "Equal Area" part means that the area of each point and it's neighbouring point should be approximately equal.
+minor_len: float64 
+major_len: float64, greater than minor_len
+divs: integer (number of points to generate) which should be an even number. 
+
+result: has shape [2, divs]
+'''
+def generateEqAreaEllipse(minor_len : float, major_len : float, divs : int = 100, log : bool = False, endpoint : bool = False, arc_calc_approx : bool = False):
+    '''
+    We start with the point closest to the origin, which is (major_len - c, 0) which is at angle = 0rad
+    this starting point is not reflected. This leaves divs-1 points
+    Split the ellipse into two mirrored halves (along the y-axis), each with (divs-1 // 2) points. 
+    
+    Each point will be uniquely represented by an angle t. for two consecutive points t_i and t_i++, what is the area of their triangle?
+    p_i = ( major_len * np.cos(t_i) - np.sqrt(major_len**2 - minor_len**2)
+            minor_len * np.sin(t_i))
+    
+    We can approximate equal area by taking an arc of angle (t_i++ - t_i) with radius ||p_i||
+    this gives us an area of 1/2 * (t_i++ - t_i) * ||p_i||^2
+
+    the length of one side is ||p_i||, the length of another side is ||p_i++||, and the interior angle is (t_i++ - t_i). this gives us a SAS triangle. 
+    '''
+    # A function that takes an angle theta, and gives us the point on the ellipse. 
+    # t_i => p_i
+    def get_pt(theta):
+        pt_x = major_len * np.cos(theta) - np.sqrt(major_len**2 - minor_len**2)
+        pt_y = minor_len * np.sin(theta)
+        result = np.stack((pt_x, pt_y))
+        # We need to make sure if given a single angle, we return an array of shape [2,1]. 
+        # If we pass multiple angles, it will necessarily have the shape [2, n], with ndim == 2
+        if(result.ndim == 1):
+            result = result[:, np.newaxis]
+        return result
+
+    # t_i => ||p_i||^2
+    def get_magn_sq(theta):
+        return (major_len * np.cos(theta) - np.sqrt(major_len**2 - minor_len**2))**2 + (minor_len * np.sin(theta))**2
+
+    start_pt = get_pt(0)
+    end_pt   = get_pt(math.pi)
+
+    ellipse_tot_area = minor_len * major_len * math.pi
+    # area per piece = total area / divs
+    area_per = ellipse_tot_area / divs
+
+    def fit_fn(u):
+        x = np.mod(u, 2*math.pi)
+        # u has shape [divs,]
+        # v has shape [divs,]
+        v = np.roll(x, 1)
+        # u_pts, v_pts has shape [2, divs]
+        u_pts = get_pt(x)
+        v_pts = get_pt(v)
+        # det([[a,b],[c,d]]) = ad - bc
+        # det([u, v]) = u_x * v_y - u_y * v_x
+        all_areas = 1/2 * np.abs(u_pts[0] * v_pts[1] - u_pts[1] * v_pts[0])
+        if(log):
+            print("all areas shape:", all_areas.shape)
+        #all_areas = np.array((divs))
+        # We want to minimize the absolute distance between the current area and the desired area, and the variance between each slice. 
+        #return np.array([abs(ellipse_tot_area - np.sum(all_areas)), np.std(all_areas)])
+        return np.abs(all_areas - area_per)
+    
+    result = least_squares(fit_fn, x0 = np.linspace(0, 2*math.pi, num = divs))
+    return get_pt(result.x)
 
 def generateTorusCrossSection(outer_radius, divs = 99):
     circ_theta = np.linspace(0, 2*math.pi, divs)
@@ -342,6 +411,7 @@ enable_logging = False
 # Parameters for the outputs / plots we will generate
 
 test_ellipse = False
+test_eq_area = True
 
 single_orbit_plot = False
 mult_orbit_plot = False
@@ -353,7 +423,7 @@ calc_hull_dev = False
 calc_area = False
 calc_signed_area = False
 
-multi_radius_calc = True
+multi_radius_calc = False
 
 # Some other calculations are dependent on having an ellipse of best fit. 
 # this includes the variables best_ellipse, ellipse, and best_cross_section
@@ -374,6 +444,48 @@ if(__name__ == "__main__"):
         cross_section = generateOrbitCrossSection(test_ellipse, math.pi/6, log = enable_logging)
         ellipse = np.stack((test_ellipse[0], test_ellipse[1], np.zeros_like(test_ellipse[0])))
     
+    if(test_eq_area):
+        major_len = 1.25
+        minor_len = 0.75
+        pts = generateEqAreaEllipse(minor_len, major_len)
+        base_pts = generateEllipse(minor_len, major_len, endpoint = True)
+        fig, (ax1, ax2) = plt.subplots(1,2)
+        ax1.set_aspect('equal')
+        ax1.scatter(pts[0], pts[1], zorder = 100)
+        ax1.plot(base_pts[0], base_pts[1])
+        ax1.scatter(0,0, c='gray')
+        #counts, bins = np.histogram(np.arctan2(pts[1],pts[0]))
+        #ax2.stairs(counts, bins)
+        pts_angles = np.arctan2(pts[1],pts[0])
+
+        def get_pt(theta):
+            pt_x = major_len * np.cos(theta) - np.sqrt(major_len**2 - minor_len**2)
+            pt_y = minor_len * np.sin(theta)
+            result = np.stack((pt_x, pt_y))
+            # We need to make sure if given a single angle, we return an array of shape [2,1]. 
+            # If we pass multiple angles, it will necessarily have the shape [2, n], with ndim == 2
+            if(result.ndim == 1):
+                result = result[:, np.newaxis]
+            return result
+
+
+        def fit_fn(u):
+            x = np.mod(u, 2*math.pi)
+            # u has shape [divs,]
+            # v has shape [divs,]
+            v = np.roll(x, 1)
+            # u_pts, v_pts has shape [2, divs]
+            u_pts = get_pt(x)
+            v_pts = get_pt(v)
+            # det([[a,b],[c,d]]) = ad - bc
+            # det([u, v]) = u_x * v_y - u_y * v_x
+            all_areas = 1/2 * np.abs(u_pts[0] * v_pts[1] - u_pts[1] * v_pts[0])
+            return all_areas
+        
+        all_areas = fit_fn(pts_angles)
+        counts, bins = np.histogram(all_areas)
+        ax2.stairs(counts, bins)
+
     # Generate the cross-section we want to fit to:
     desired_cross = generateTorusCrossSection(outer_radius, cross_divs)
     
@@ -483,18 +595,21 @@ if(__name__ == "__main__"):
         axe.axline(xy1 = (0,0), slope = 0, c = 'black')
 
         # We also want to fit a function to our "major radii" to see what pattern it follows. 
-        major_fit = np.polynomial.Polynomial.fit(outer_radii, major_radii, 2)
+        major_fit, (resid, rank, sv, rcond) = np.polynomial.Polynomial.fit(outer_radii, major_radii, 3, full = True)
         major_coefs = major_fit.convert().coef
         print("outer-radius -> major_radius")
         print(major_fit.convert())
 
         fit_x, fit_y = major_fit.linspace(test_num, (np.min(outer_radii), np.max(outer_radii)))
         axr.plot(fit_x, fit_y, c = 'gray')
+        # Calculate the R^2 value, which is 1 - SS_res / Variance
+        print("R value:", 1 - resid[0] / np.var(major_radii))
 
         # Now, fit a linear line to outer radii vs angle
         slope, intercept, rvalue, _, _ = linregress(outer_radii, angles)
         print("outer-radius -> inclination")
         print(intercept, "+", slope,"x")
+        print("R value:", rvalue)
         axa.plot(outer_radii, intercept * np.ones_like(outer_radii) + slope * np.array(outer_radii), c = 'gray')
 
 
@@ -546,7 +661,7 @@ if(__name__ == "__main__"):
 
         # do a 2D scatterplot for the y-z plane cross-section
         ax2 = fig_mult.add_subplot(1, 2, 2)
-        ax2.set_aspect(1)
+        ax2.set_aspect('equal')
         ax2.axline((1,0),(1.1,0), c='grey', zorder = 0)
         ax2.axline((1,0),(1,0.1), c='grey', zorder = 0)
         # Plot the desired cross first, so it's on the bottom.
@@ -637,7 +752,7 @@ if(__name__ == "__main__"):
         
         # Form a cross-section, of all points overlaid
         ax_cross = fig_rel.add_subplot(1, 2, 2)
-        ax_cross.set_aspect(1)
+        ax_cross.set_aspect('equal')
         ax_cross.axline((1,0),(1.1,0), c='grey', zorder = 0)
         ax_cross.axline((1,0),(1,0.1), c='grey', zorder = 0)            
         closest_cyl = crossSection(circle_closest_flat)
@@ -671,8 +786,10 @@ if(__name__ == "__main__"):
         # relative_centered has shape = [2, len(theta), num_tracked_objs]
         relative_centered = circle_closest[0:2] - circle_pts[0:2, :, np.newaxis]
 
+        fig, (axr, axf) = plt.subplots(1,2)
+        axr.set_box_aspect(True)
         # This makes a cool rotationally symmetric pattern:
-        # plt.scatter(relative_centered[0], relative_centered[1], c = np.repeat(theta[:, np.newaxis], repeats = num_tracked_objs, axis = 1))   
+        axr.scatter(relative_centered[0], relative_centered[1], c = np.repeat(theta[:, np.newaxis], repeats = num_tracked_objs, axis = 1))   
         # the number of leaves is related to num_tracked_objs
         
         # Scalar Projection (dot product) of relative_centered onto perp_vec:
@@ -682,7 +799,9 @@ if(__name__ == "__main__"):
         # proj_range has shape = (len(theta),)
         proj_range  = np.ptp(scalar_proj, axis = 1)
         proj_std    = np.std(scalar_proj, axis = 1)
-        # plt.scatter(theta, proj_range) has a similar fractal symmetry pattern to the one above
+        #has a similar fractal symmetry pattern to the one above
+        axf.set_box_aspect(True)
+        axf.scatter(theta, proj_range) 
         
         # maximum deviation:
         relative_max_diff = np.max(scalar_proj)
