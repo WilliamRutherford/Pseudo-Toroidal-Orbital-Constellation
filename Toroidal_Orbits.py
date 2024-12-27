@@ -411,10 +411,12 @@ enable_logging = False
 # Parameters for the outputs / plots we will generate
 
 test_ellipse = False
-test_eq_area = True
+test_eq_area = False
 
 single_orbit_plot = False
-mult_orbit_plot = False
+mult_orbit_plot = True
+
+mult_orbit_density = True
 
 relative_motion_plot = False
 closer_points_plot = False
@@ -431,9 +433,9 @@ fitting = not test_ellipse
 
 circle_fitting = True
 
-outer_radius = 0.3
+outer_radius = 0.6
 num_objs = 25
-ellipse_divs = 300
+ellipse_divs = 100
 cross_divs = ellipse_divs
 
 if(__name__ == "__main__"):
@@ -509,7 +511,7 @@ if(__name__ == "__main__"):
         eccentricity = 1 - math.sqrt(min_rad**2 / max_rad**2)
         inclination = ang
         
-        best_ellipse = generateEllipse(min_rad, max_rad, divs = ellipse_divs)
+        best_ellipse = generateEqAreaEllipse(min_rad, max_rad, divs = ellipse_divs)
         best_cross_section = generateOrbitCrossSection(best_ellipse, ang)
         # turn the ellipse into 3d
         ellipse = np.stack((best_ellipse[0], best_ellipse[1], np.zeros_like(best_ellipse[0])))
@@ -637,7 +639,13 @@ if(__name__ == "__main__"):
         ax.scatter(single_orbit[0], single_orbit[1], single_orbit[2])
         ax.scatter(0,0,0, c='red')
         
-        
+    if(mult_orbit_density):
+        all_orbits, _ = surfaceRevolution(single_orbit, num_objs, log = enable_logging, matrix=False)
+        fig, (ax) = plt.subplots(1,1)
+        ax.set_title('Multi-Orbit Point density (x,y)')
+        h = ax.hist2d(all_orbits[0], all_orbits[1], bins = 20)
+        fig.colorbar(h[3], ax=ax)
+
     if(mult_orbit_plot):
         all_orbits, labels = surfaceRevolution(single_orbit, num_objs, log = enable_logging, matrix=True)
         
@@ -653,7 +661,7 @@ if(__name__ == "__main__"):
         all_orbits_flat = np.reshape(all_orbits, (3, -1))
         
         ax1.set_box_aspect((np.ptp(all_orbits_flat[0]), np.ptp(all_orbits_flat[1]), np.ptp(all_orbits_flat[2])))
-        if(False):
+        if(True):
             ax1.scatter(all_orbits[0], all_orbits[1], all_orbits[2], c = labels)
         else:
             for i in range(0, num_objs):
