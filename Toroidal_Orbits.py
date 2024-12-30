@@ -60,17 +60,10 @@ def generateEqAreaEllipse(minor_len : float, major_len : float, divs : int = 100
 
     the length of one side is ||p_i||, the length of another side is ||p_i++||, and the interior angle is (t_i++ - t_i). this gives us a SAS triangle. 
     '''
+
     # A function that takes an angle theta, and gives us the point on the ellipse. 
     # t_i => p_i
-    def get_pt(theta):
-        pt_x = major_len * np.cos(theta) - np.sqrt(major_len**2 - minor_len**2)
-        pt_y = minor_len * np.sin(theta)
-        result = np.stack((pt_x, pt_y))
-        # We need to make sure if given a single angle, we return an array of shape [2,1]. 
-        # If we pass multiple angles, it will necessarily have the shape [2, n], with ndim == 2
-        if(result.ndim == 1):
-            result = result[:, np.newaxis]
-        return result
+    get_pt = parametricEllipse(minor_len, major_len)
 
     # t_i => ||p_i||^2
     def get_magn_sq(theta):
@@ -125,8 +118,19 @@ t: either a single float, or a numpy array
 def parametricEllipse(minor_len, major_len, log=False):
     
     def create_ellipse(t):
-        return 
-    
+        pt_x = major_len * np.cos(t)
+        pt_y = minor_len * np.sin(t) 
+        # Accounting for the possibility that the axes have flipped (minor len > major len)
+        if(major_len > minor_len):
+            pt_x -= np.sqrt(major_len**2 - minor_len**2)
+        else:
+            pt_y -= np.sqrt(minor_len**2 - major_len**2)
+
+        if(log):
+            print("x coord shape:", pt_x.shape)
+            print("y coord shape:", pt_y.shape)
+        return np.stack((pt_x, pt_y))
+        
     return create_ellipse
 
 '''
@@ -149,6 +153,18 @@ def parametricOrbit(minor_len, major_len, rot_ang, log=False):
         return rotation_matrix @ np.vstack((major_len * math.cos(t), minor_len * math.sin(t)))
 
     return create_orbit
+
+'''
+Given the parameters of an ellipse, return a function that takes an angle and returns the polar radius.
+This assumes the ellipse is centered on the right-most focus.
+'''
+def parametricEllipseRadius(minor_len, major_len, log=False):
+    ecc = math.sqrt(1 - minor_len**2/major_len**2)
+    
+    def get_radius(theta): 
+        return major_len * (1 - ecc**2) / (1 + ecc * np.cos(theta))
+     
+    return get_radius
 
 '''
 Given a singular ellipse and an inclination, generate an orbit.  
@@ -414,7 +430,7 @@ test_ellipse = False
 test_eq_area = False
 
 single_orbit_plot = False
-mult_orbit_plot = True
+mult_orbit_plot = False
 
 mult_orbit_density = True
 
@@ -512,6 +528,7 @@ if(__name__ == "__main__"):
         inclination = ang
         
         best_ellipse = generateEqAreaEllipse(min_rad, max_rad, divs = ellipse_divs)
+        ellipse_angles = np.sort(np.arctan2(best_ellipse[1], best_ellipse[0]))
         best_cross_section = generateOrbitCrossSection(best_ellipse, ang)
         # turn the ellipse into 3d
         ellipse = np.stack((best_ellipse[0], best_ellipse[1], np.zeros_like(best_ellipse[0])))
@@ -640,11 +657,30 @@ if(__name__ == "__main__"):
         ax.scatter(0,0,0, c='red')
         
     if(mult_orbit_density):
+
         all_orbits, _ = surfaceRevolution(single_orbit, num_objs, log = enable_logging, matrix=False)
-        fig, (ax) = plt.subplots(1,1)
-        ax.set_title('Multi-Orbit Point density (x,y)')
-        h = ax.hist2d(all_orbits[0], all_orbits[1], bins = 20)
-        fig.colorbar(h[3], ax=ax)
+        fig, (ax1, ax2) = plt.subplots(1,2)
+        ax1.set_title('Multi-Orbit Point density (x,y)')
+        h = ax1.hist2d(all_orbits[0], all_orbits[1], bins = 20)
+        fig.colorbar(h[3], ax=ax1)
+        #ax2.hist(ellipse_angles)
+
+        get_pt = parametricEllipse(min_rad, max_rad)
+
+        ax2.set_title("angle => angle increase (blue) \n angle => arc area vs desired (red)")
+        ellipse_angles_diff = (ellipse_angles - np.roll(ellipse_angles,1))
+        ax2.scatter(ellipse_angles[1:], ellipse_angles_diff[1:], c = 'blue')
+        
+        ax_area = ax2.twinx()
+        u_pts = get_pt(ellipse_angles)
+        v_pts = get_pt(np.roll(ellipse_angles, 1))
+        # det([[a,b],[c,d]]) = ad - bc
+        # det([u, v]) = u_x * v_y - u_y * v_x
+        ellipse_area_diff = 1/2 * np.abs(u_pts[0] * v_pts[1] - u_pts[1] * v_pts[0])
+        ellipse_area_var = ellipse_area_diff - min_rad * max_rad * math.pi / ellipse_divs
+        ax_area.scatter(ellipse_angles, ellipse_area_var, c = 'red')
+
+
 
     if(mult_orbit_plot):
         all_orbits, labels = surfaceRevolution(single_orbit, num_objs, log = enable_logging, matrix=True)
