@@ -475,7 +475,7 @@ circle_fitting = True
 
 outer_radius = 0.3
 num_objs = 25
-ellipse_divs = 100
+ellipse_divs = 250
 cross_divs = ellipse_divs
 
 if(__name__ == "__main__"):
@@ -612,7 +612,7 @@ if(__name__ == "__main__"):
         plt.scatter(outer_radii, each_hull_dev)
     
     if(multi_radius_calc):
-        test_num = 50
+        test_num = 250
         # Generate all outer radii we will fit for:
         outer_radii = list(np.linspace(0.05, 0.90, test_num))
 
