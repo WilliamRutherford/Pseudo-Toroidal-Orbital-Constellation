@@ -39,13 +39,22 @@ def generateEllipse(minor_len : float, major_len : float, divs : int = 100, log 
 '''
 Given a minor and major axis length for an ellipse, generate a set of points for an ellipse centered on it's right focus. 
 The "Equal Area" part means that the area of each point and it's neighbouring point should be approximately equal.
+This equal-area is done using least-squares optimization. 
+
 minor_len: float64 
 major_len: float64, greater than minor_len
 divs: integer (number of points to generate) which should be an even number. 
+return_angles : bool, tells us whether to also return the angles, not just the points
 
-result: has shape [2, divs]
+result_angles has shape [divs,]
+result_pts: has shape [2, divs]
+
+if(return_angles):
+    return (result_angles, result_pts)
+else:
+    return result_pts
 '''
-def generateEqAreaEllipse(minor_len : float, major_len : float, divs : int = 100, log : bool = False, endpoint : bool = False, arc_calc_approx : bool = False):
+def generateEqAreaEllipse(minor_len : float, major_len : float, divs : int = 100, log : bool = False, endpoint : bool = False, arc_calc_approx : bool = False, return_angles : bool = False):
     '''
     We start with the point closest to the origin, which is (major_len - c, 0) which is at angle = 0rad
     this starting point is not reflected. This leaves divs-1 points
@@ -90,12 +99,23 @@ def generateEqAreaEllipse(minor_len : float, major_len : float, divs : int = 100
         if(log):
             print("all areas shape:", all_areas.shape)
         #all_areas = np.array((divs))
+
+        # These ones converge faster; I can only assume because it's a function in R^divs => R^divs, where changes are localized. 
+        # variables x_i and x_i+1 affect x_i
+        return np.abs(all_areas - area_per)
+        #return np.abs(all_areas - np.mean(all_areas))
+
+        # Both of the below are incredibly slow to converge, if at all.
+        # This might be because they are a function of R^divs => 1 or 2, where we examine global changes and squish down.  
         # We want to minimize the absolute distance between the current area and the desired area, and the variance between each slice. 
         #return np.array([abs(ellipse_tot_area - np.sum(all_areas)), np.std(all_areas)])
-        return np.abs(all_areas - area_per)
+        #return np.var(all_areas)
     
-    result = least_squares(fit_fn, x0 = np.linspace(0, 2*math.pi, num = divs))
-    return get_pt(result.x)
+    result = least_squares(fit_fn, x0 = np.linspace(0, 2*math.pi, num = divs), bounds=(0, 2*math.pi))
+    if(return_angles):
+        return (result.x, get_pt(result.x))
+    else:
+        return get_pt(result.x)
 
 def generateTorusCrossSection(outer_radius, divs = 99):
     circ_theta = np.linspace(0, 2*math.pi, divs)
@@ -244,8 +264,9 @@ This treats the area difference as arcs; points further from the center are pena
 X: a set of 2D points, centered at approximately "circle_center"
 (circle_radius, circle_center): the parameters of the circle we compare to. 
 absolute: whether or not we calculated the signed area (interior = negative, exterior = positive) or the absolute area (both are positive)  
+vector_arcs: Whether to return the sum of all arc-areas, or the arc-areas themselves. 
 '''
-def hull_circle_diff(X, circle_radius, circle_center = np.array([1,0])[:, np.newaxis], log = False, absolute = True):
+def hull_circle_diff(X, circle_radius, circle_center = np.array([1,0])[:, np.newaxis], log = False, absolute = True, vector_arcs = False):
     # Calculate the distance between each point, and the circle's center. 
     X_dist = np.linalg.norm(X - circle_center, axis = 0)
     # Subtract the circle radius, to get their difference
@@ -262,7 +283,10 @@ def hull_circle_diff(X, circle_radius, circle_center = np.array([1,0])[:, np.new
     if(log):
         print("X distance shape:", X_dist.shape)
         print("X distance sum:", np.sum(X_dist))
-    return np.sum(result)
+    if(vector_arcs):
+        return result
+    else:
+        return np.sum(result)
 
 '''
 Given a set of 2D points, separate them into points inside and outside a circle with radius "circle_radius".
@@ -341,7 +365,7 @@ def fit_desired_circle(circle_radius, start_minor = 1, start_major = 1.0025, sta
         # we should also add a term to make sure minor and major don't BOTH approach zero. 
         # we should also add a term to make sure minor_rad < major_rad. something like math.inf * (major_rad < minor_rad)
         #return np.sum(hull_signed_circle_dist(gen_cross_section, circle_radius))
-        return hull_circle_diff(gen_cross_section, circle_radius)
+        return hull_circle_diff(gen_cross_section, circle_radius, vector_arcs=True)
     
     opt_result = least_squares(fit_func, [start_minor, start_major, start_ang])
     rad_a, rad_b, angle = opt_result.x
@@ -427,12 +451,12 @@ enable_logging = False
 # Parameters for the outputs / plots we will generate
 
 test_ellipse = False
-test_eq_area = False
+test_eq_area = True
 
 single_orbit_plot = False
-mult_orbit_plot = False
+mult_orbit_plot = True
 
-mult_orbit_density = True
+mult_orbit_density = False
 
 relative_motion_plot = False
 closer_points_plot = False
@@ -449,7 +473,7 @@ fitting = not test_ellipse
 
 circle_fitting = True
 
-outer_radius = 0.6
+outer_radius = 0.3
 num_objs = 25
 ellipse_divs = 100
 cross_divs = ellipse_divs
@@ -462,48 +486,6 @@ if(__name__ == "__main__"):
         cross_section = generateOrbitCrossSection(test_ellipse, math.pi/6, log = enable_logging)
         ellipse = np.stack((test_ellipse[0], test_ellipse[1], np.zeros_like(test_ellipse[0])))
     
-    if(test_eq_area):
-        major_len = 1.25
-        minor_len = 0.75
-        pts = generateEqAreaEllipse(minor_len, major_len)
-        base_pts = generateEllipse(minor_len, major_len, endpoint = True)
-        fig, (ax1, ax2) = plt.subplots(1,2)
-        ax1.set_aspect('equal')
-        ax1.scatter(pts[0], pts[1], zorder = 100)
-        ax1.plot(base_pts[0], base_pts[1])
-        ax1.scatter(0,0, c='gray')
-        #counts, bins = np.histogram(np.arctan2(pts[1],pts[0]))
-        #ax2.stairs(counts, bins)
-        pts_angles = np.arctan2(pts[1],pts[0])
-
-        def get_pt(theta):
-            pt_x = major_len * np.cos(theta) - np.sqrt(major_len**2 - minor_len**2)
-            pt_y = minor_len * np.sin(theta)
-            result = np.stack((pt_x, pt_y))
-            # We need to make sure if given a single angle, we return an array of shape [2,1]. 
-            # If we pass multiple angles, it will necessarily have the shape [2, n], with ndim == 2
-            if(result.ndim == 1):
-                result = result[:, np.newaxis]
-            return result
-
-
-        def fit_fn(u):
-            x = np.mod(u, 2*math.pi)
-            # u has shape [divs,]
-            # v has shape [divs,]
-            v = np.roll(x, 1)
-            # u_pts, v_pts has shape [2, divs]
-            u_pts = get_pt(x)
-            v_pts = get_pt(v)
-            # det([[a,b],[c,d]]) = ad - bc
-            # det([u, v]) = u_x * v_y - u_y * v_x
-            all_areas = 1/2 * np.abs(u_pts[0] * v_pts[1] - u_pts[1] * v_pts[0])
-            return all_areas
-        
-        all_areas = fit_fn(pts_angles)
-        counts, bins = np.histogram(all_areas)
-        ax2.stairs(counts, bins)
-
     # Generate the cross-section we want to fit to:
     desired_cross = generateTorusCrossSection(outer_radius, cross_divs)
     
@@ -533,7 +515,68 @@ if(__name__ == "__main__"):
         # turn the ellipse into 3d
         ellipse = np.stack((best_ellipse[0], best_ellipse[1], np.zeros_like(best_ellipse[0])))
         ellipse_flat = best_ellipse
-    
+
+    if(test_eq_area):
+        major_len = max_rad
+        minor_len = min_rad
+        
+        (pts_angles, pts) = generateEqAreaEllipse(minor_len, major_len, divs=ellipse_divs, return_angles = True)
+        base_pts = generateEllipse(minor_len, major_len, divs = ellipse_divs, endpoint = True)
+        fig, (ax1, ax2) = plt.subplots(1,2)
+        ax1.set_aspect('equal')
+        # Show the ellipse of equal area we generated
+        ax1.scatter(pts[0], pts[1], zorder = 100)
+        # Then, show a continuous line showing the outline of the ellipse
+        ax1.plot(base_pts[0], base_pts[1], c = 'grey')
+        # Also show the center point, for scale
+        ax1.scatter(0,0, c='gray')
+        # line for the x axis
+        ax1.axhline(0, c = 'grey')
+        #ax1.axline((0,0), slope = 0, c = 'grey')
+        ax1.axvline(0, c = 'grey')
+        #ax1.axline((0,0), slope = math.inf, c = 'grey')
+        #counts, bins = np.histogram(np.arctan2(pts[1],pts[0]))
+        #ax2.stairs(counts, bins)
+        #pts_angles = np.arctan2(pts[1],pts[0])
+
+        '''
+        def get_pt(theta):
+            pt_x = major_len * np.cos(theta) - np.sqrt(major_len**2 - minor_len**2)
+            pt_y = minor_len * np.sin(theta)
+            result = np.stack((pt_x, pt_y))
+            # We need to make sure if given a single angle, we return an array of shape [2,1]. 
+            # If we pass multiple angles, it will necessarily have the shape [2, n], with ndim == 2
+            if(result.ndim == 1):
+                result = result[:, np.newaxis]
+            return result
+        '''
+        get_pt = parametricEllipse(minor_len, major_len)
+
+        # Given a set of angles theta (representing points on an ellipse) calculate the area of the triangle including it's point and the next point. 
+        def all_areas_gen(u):
+            x = np.mod(u, 2*math.pi)
+            # u has shape [divs,]
+            # v has shape [divs,]
+            v = np.roll(x, 1)
+            # u_pts, v_pts has shape [2, divs]
+            u_pts = get_pt(x)
+            v_pts = get_pt(v)
+            # det([[a,b],[c,d]]) = ad - bc
+            # det([u, v]) = u_x * v_y - u_y * v_x
+            all_areas = 1/2 * np.abs(u_pts[0] * v_pts[1] - u_pts[1] * v_pts[0])
+            return all_areas
+        
+        all_areas = all_areas_gen(pts_angles)
+        #counts, bins = np.histogram(all_areas)
+        #ax2.stairs(counts, bins)
+        ax2.hist(all_areas)
+        # we would like to also show the desired area (ellipse_area / divs) on the histogram, but the scale on a histogram is way different. 
+        #ax2.axline((major_len * minor_len * math.pi / (ellipse_divs), 0), slope = np.inf, c = 'grey')
+
+        # Some useful outputs
+        print("total area / actual area", np.sum(all_areas) / (math.pi * min_rad * max_rad))
+        print("variance in area:", np.var(all_areas))
+
     if(calc_hull_dev):
         test_num = 20
         # Generate all outer radii we will fit for:
