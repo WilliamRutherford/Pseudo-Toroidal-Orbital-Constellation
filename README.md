@@ -25,11 +25,17 @@ Here are the graph and lines of fit for outer_radii ratio versus major / minor r
 
 ![multi-radius_plot](/fig_plots/per_outer_radii.png "Multi-Radius Plot")
 
-250 tests with 250 points:
-Torus Outer Radii => Ellipse Major Radii: 
-0.9964165667830442 + 0.05083278374677602 x\**1 - 0.06773894856497786 x\**2 + 0.2404716768588247 x\**3
-R value: 0.9576105796470232
+250 tests with 250 points:  
 
-Torus Outer Radii => Orbit Inclination:
+Torus Outer Radii => Ellipse Major Radii:  
+
+0.9964165667830442 + 0.05083278374677602 x\**1 - 0.06773894856497786 x\**2 + 0.2404716768588247 x\**3  
+
+R value: 0.9576105796470232  
+
+
+Torus Outer Radii => Orbit Inclination:  
+
 0.030297222844646532 + 0.6929121599482744 x\**1 + 0.7208830129534533 x\**2
+  
 R value: 0.9207686121729128
