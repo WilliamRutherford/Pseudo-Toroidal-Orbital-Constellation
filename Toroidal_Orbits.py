@@ -451,10 +451,10 @@ enable_logging = False
 # Parameters for the outputs / plots we will generate
 
 test_ellipse = False
-test_eq_area = True
+test_eq_area = False
 
 single_orbit_plot = False
-mult_orbit_plot = True
+mult_orbit_plot = False
 
 mult_orbit_density = False
 
@@ -465,7 +465,7 @@ calc_hull_dev = False
 calc_area = False
 calc_signed_area = False
 
-multi_radius_calc = False
+multi_radius_calc = True
 
 # Some other calculations are dependent on having an ellipse of best fit. 
 # this includes the variables best_ellipse, ellipse, and best_cross_section
@@ -614,7 +614,7 @@ if(__name__ == "__main__"):
     if(multi_radius_calc):
         test_num = 50
         # Generate all outer radii we will fit for:
-        outer_radii = list(np.linspace(0.05, 0.95, test_num))
+        outer_radii = list(np.linspace(0.05, 0.90, test_num))
 
         # what values do we want to look at?
         # result from hull_circle_diff() or, the error of our minimization
@@ -641,7 +641,8 @@ if(__name__ == "__main__"):
 
         major_radii = np.array(major_radii)
 
-        fig,(axr, axa, axe) = plt.subplots(1,3)
+        #fig,(axr, axa, axe) = plt.subplots(1,3)
+        fig, (axr, axa) = plt.subplots(1,2)
 
         axr.title.set_text("major & minor radius")
         axr.scatter(outer_radii, major_radii, c = 'blue')
@@ -652,10 +653,11 @@ if(__name__ == "__main__"):
         axa.title.set_text("Orbital Angle / Inclination")
         axa.scatter(outer_radii, angles)
 
+        '''
         axe.title.set_text("Fit error hull_circle_diff")
         axe.scatter(outer_radii, fit_error)
         axe.axline(xy1 = (0,0), slope = 0, c = 'black')
-
+        '''
         # We also want to fit a function to our "major radii" to see what pattern it follows. 
         major_fit, (resid, rank, sv, rcond) = np.polynomial.Polynomial.fit(outer_radii, major_radii, 3, full = True)
         major_coefs = major_fit.convert().coef
@@ -667,12 +669,13 @@ if(__name__ == "__main__"):
         # Calculate the R^2 value, which is 1 - SS_res / Variance
         print("R value:", 1 - resid[0] / np.var(major_radii))
 
-        # Now, fit a linear line to outer radii vs angle
-        slope, intercept, rvalue, _, _ = linregress(outer_radii, angles)
+        ang_fit, (ang_resid, ang_rank, ang_sv, ang_rcond) = np.polynomial.Polynomial.fit(outer_radii, angles, 2, full = True)
         print("outer-radius -> inclination")
-        print(intercept, "+", slope,"x")
-        print("R value:", rvalue)
-        axa.plot(outer_radii, intercept * np.ones_like(outer_radii) + slope * np.array(outer_radii), c = 'gray')
+        print(ang_fit.convert())
+        ang_fix_x, ang_fit_y = ang_fit.linspace(test_num, (np.min(outer_radii), np.max(outer_radii)))
+        axa.plot(ang_fix_x, ang_fit_y, c = 'gray')
+        print("R value:", 1 - ang_resid[0] / np.var(angles))
+
 
 
     if(calc_area):
