@@ -55,67 +55,22 @@ else:
     return result_pts
 '''
 def generateEqAreaEllipse(minor_len : float, major_len : float, divs : int = 100, log : bool = False, endpoint : bool = False, arc_calc_approx : bool = False, return_angles : bool = False):
-    '''
-    We start with the point closest to the origin, which is (major_len - c, 0) which is at angle = 0rad
-    this starting point is not reflected. This leaves divs-1 points
-    Split the ellipse into two mirrored halves (along the y-axis), each with (divs-1 // 2) points. 
-    
-    Each point will be uniquely represented by an angle t. for two consecutive points t_i and t_i++, what is the area of their triangle?
-    p_i = ( major_len * np.cos(t_i) - np.sqrt(major_len**2 - minor_len**2)
-            minor_len * np.sin(t_i))
-    
-    We can approximate equal area by taking an arc of angle (t_i++ - t_i) with radius ||p_i||
-    this gives us an area of 1/2 * (t_i++ - t_i) * ||p_i||^2
+    a = major_len
+    b = minor_len
 
-    the length of one side is ||p_i||, the length of another side is ||p_i++||, and the interior angle is (t_i++ - t_i). this gives us a SAS triangle. 
-    '''
+    e = np.sqrt(1 - b*b/a/a)
 
-    # A function that takes an angle theta, and gives us the point on the ellipse. 
-    # t_i => p_i
-    get_pt = parametricEllipse(minor_len, major_len)
+    M = np.linspace(0, 2*np.pi, divs, endpoint=endpoint)
 
-    # t_i => ||p_i||^2
-    def get_magn_sq(theta):
-        return (major_len * np.cos(theta) - np.sqrt(major_len**2 - minor_len**2))**2 + (minor_len * np.sin(theta))**2
+    E = M.copy()
 
-    start_pt = get_pt(0)
-    end_pt   = get_pt(math.pi)
+    for _ in range(6):
+        E -= (E - e*np.sin(E) - M) / (1 - e*np.cos(E))
 
-    ellipse_tot_area = minor_len * major_len * math.pi
-    # area per piece = total area / divs
-    area_per = ellipse_tot_area / divs
+    x = a*(np.cos(E) - e)
+    y = b*np.sin(E)
 
-    def fit_fn(u):
-        x = np.mod(u, 2*math.pi)
-        # u has shape [divs,]
-        # v has shape [divs,]
-        v = np.roll(x, 1)
-        # u_pts, v_pts has shape [2, divs]
-        u_pts = get_pt(x)
-        v_pts = get_pt(v)
-        # det([[a,b],[c,d]]) = ad - bc
-        # det([u, v]) = u_x * v_y - u_y * v_x
-        all_areas = 1/2 * np.abs(u_pts[0] * v_pts[1] - u_pts[1] * v_pts[0])
-        if(log):
-            print("all areas shape:", all_areas.shape)
-        #all_areas = np.array((divs))
-
-        # These ones converge faster; I can only assume because it's a function in R^divs => R^divs, where changes are localized. 
-        # variables x_i and x_i+1 affect x_i
-        return np.abs(all_areas - area_per)
-        #return np.abs(all_areas - np.mean(all_areas))
-
-        # Both of the below are incredibly slow to converge, if at all.
-        # This might be because they are a function of R^divs => 1 or 2, where we examine global changes and squish down.  
-        # We want to minimize the absolute distance between the current area and the desired area, and the variance between each slice. 
-        #return np.array([abs(ellipse_tot_area - np.sum(all_areas)), np.std(all_areas)])
-        #return np.var(all_areas)
-    
-    result = least_squares(fit_fn, x0 = np.linspace(0, 2*math.pi, num = divs), bounds=(0, 2*math.pi))
-    if(return_angles):
-        return (result.x, get_pt(result.x))
-    else:
-        return get_pt(result.x)
+    return np.vstack((x, y))
 
 def generateTorusCrossSection(outer_radius, divs = 99):
     circ_theta = np.linspace(0, 2*math.pi, divs)
@@ -387,10 +342,10 @@ def fitTorusOrbit(out_radius, ellipse_divs = 100, cross_divs = 99):
     (min_rad, max_rad, ang) = best_params
     
     # We will also store these using more typical orbital mechanics terminology
-    focal_dist = math.sqrt(max_rad**2 + min_rad**2)
+    focal_dist = math.sqrt(max_rad**2 - min_rad**2)
     apoapsis  = max_rad + focal_dist
     periapsis = max_rad - focal_dist
-    eccentricity = 1 - math.sqrt(min_rad**2 / max_rad**2)
+    eccentricity = math.sqrt(1 - min_rad**2 / max_rad**2)
     inclination = ang
     
     result = {
@@ -454,7 +409,7 @@ test_ellipse = False
 test_eq_area = False
 
 single_orbit_plot = False
-mult_orbit_plot = False
+mult_orbit_plot = True
 
 mult_orbit_density = False
 
@@ -465,7 +420,10 @@ calc_hull_dev = False
 calc_area = False
 calc_signed_area = False
 
-multi_radius_calc = True
+multi_radius_calc = False
+multi_radius_plot = False
+
+discrete_fourier = False
 
 # Some other calculations are dependent on having an ellipse of best fit. 
 # this includes the variables best_ellipse, ellipse, and best_cross_section
@@ -475,7 +433,7 @@ circle_fitting = True
 
 outer_radius = 0.3
 num_objs = 25
-ellipse_divs = 250
+ellipse_divs = 50
 cross_divs = ellipse_divs
 
 if(__name__ == "__main__"):
@@ -503,10 +461,10 @@ if(__name__ == "__main__"):
         (min_rad, max_rad, ang) = best_params
         
         # We will also store these using more typical orbital mechanics terminology
-        focal_dist = math.sqrt(max_rad**2 + min_rad**2)
+        focal_dist = math.sqrt(max_rad**2 - min_rad**2)
         apoapsis  = max_rad + focal_dist
         periapsis = max_rad - focal_dist
-        eccentricity = 1 - math.sqrt(min_rad**2 / max_rad**2)
+        eccentricity = math.sqrt(1 - min_rad**2 / max_rad**2)
         inclination = ang
         
         best_ellipse = generateEqAreaEllipse(min_rad, max_rad, divs = ellipse_divs)
@@ -621,6 +579,7 @@ if(__name__ == "__main__"):
         fit_error = []
         major_radii = []
         minor_radii = []
+        cross_sections = []
         angles = []
 
         for curr_rad in outer_radii:
@@ -631,13 +590,14 @@ if(__name__ == "__main__"):
             
             (min_rad, max_rad, ang) = curr_params
             # Calculate the error of our minimization, just like fit_desired_circle does
-            gen_ellipse = generateEllipse(min_rad, max_rad, divs = ellipse_divs)
+            gen_ellipse = generateEqAreaEllipse(min_rad, max_rad, divs = ellipse_divs)
             gen_cross_section = generateOrbitCrossSection(gen_ellipse, ang)
             fit_error.append(hull_circle_diff(gen_cross_section, curr_rad))
             
             major_radii.append(max_rad)
             minor_radii.append(min_rad)
             angles.append(ang)
+            cross_sections.append(gen_cross_section)
 
         major_radii = np.array(major_radii)
 
@@ -676,7 +636,94 @@ if(__name__ == "__main__"):
         axa.plot(ang_fix_x, ang_fit_y, c = 'gray')
         print("R value:", 1 - ang_resid[0] / np.var(angles))
 
+        rho = np.sqrt(np.array(major_radii)**2 - np.array(minor_radii)**2)
+        axr.scatter(outer_radii, rho, c = 'green')
+        rho_fit, (resid, rank, sv, rcond) = np.polynomial.Polynomial.fit(outer_radii, rho, 3, full = True)
+        rho_coefs = rho_fit.convert().coef
+        print("outer-radius -> focal distance")
+        print(rho_fit.convert())
+        print("R value:", 1 - resid[0] / np.var(rho))
 
+        plt.scatter(outer_radii, minor_radii*np.sin(angles) - outer_radii)
+
+    if(multi_radius_plot):
+        # For each radius, plot a single fitted orbit. 
+        test_num = 100
+        # Generate all outer radii we will fit for:
+        outer_radii = list(np.linspace(0.05, 0.90, test_num))
+        
+        fig = plt.figure()
+        ax = fig.add_subplot(projection='3d')
+        #ax.set_box_aspect((np.ptp(single_orbit[0]), np.ptp(single_orbit[1]), np.ptp(single_orbit[2])))
+
+        all_rad_orbits = np.zeros((test_num, 3, ellipse_divs))
+        all_rad_labels = np.repeat(np.array(outer_radii)[:, np.newaxis], ellipse_divs, axis = 1)
+        print("all_rad_labels size:", all_rad_labels.shape)
+
+        # Generate all orbits
+        for i in range(0, test_num):
+            curr_rad = outer_radii[i]
+            curr_params = fit_desired_circle(curr_rad, start_ang=np.arcsin(curr_rad), ellipse_divs = ellipse_divs)
+            (min_rad, max_rad, ang) = curr_params
+            # Calculate the error of our minimization, just like fit_desired_circle does
+            gen_ellipse = generateEllipse(min_rad, max_rad, divs = ellipse_divs)
+            gen_ellipse.resize((3,ellipse_divs))
+            gen_orbit = generateOrbit(gen_ellipse, ang = ang, log = enable_logging)
+            all_rad_orbits[i] = gen_orbit
+
+        # Set the aspect ratio of our 3d plot
+        ax.set_box_aspect((np.ptp(all_rad_orbits[:, 0]), np.ptp(all_rad_orbits[:, 1]), np.ptp(all_rad_orbits[:, 2])))
+
+        # Plot all orbits
+        ax.scatter(all_rad_orbits[:, 0], all_rad_orbits[:, 1], all_rad_orbits[:, 2], c = all_rad_labels)
+
+    if(discrete_fourier):
+        test_num = 250
+        # Generate all outer radii we will fit for:
+        outer_radii = list(np.linspace(0.05, 0.90, test_num))
+
+        # what values do we want to look at?
+        # result from hull_circle_diff() or, the error of our minimization
+        fit_error = []
+        major_radii = []
+        minor_radii = []
+        cross_sections = []
+        angles = []
+
+        for curr_rad in outer_radii:
+            if(curr_rad >= 1):
+                curr_params = fit_desired_circle(curr_rad, start_ang=np.arcsin(1), ellipse_divs = ellipse_divs)
+            else:
+                curr_params = fit_desired_circle(curr_rad, start_ang=np.arcsin(curr_rad), ellipse_divs = ellipse_divs)
+            
+            (min_rad, max_rad, ang) = curr_params
+            # Calculate the error of our minimization, just like fit_desired_circle does
+            gen_ellipse = generateEqAreaEllipse(min_rad, max_rad, divs = ellipse_divs)
+            gen_cross_section = generateOrbitCrossSection(gen_ellipse, ang)
+            fit_error.append(hull_circle_diff(gen_cross_section, curr_rad))
+            
+            major_radii.append(max_rad)
+            minor_radii.append(min_rad)
+            angles.append(ang)
+            cross_sections.append(gen_cross_section)
+
+        major_radii = np.array(major_radii)
+
+        X_vals = np.array(cross_sections)[:, 0, :]
+        coeff = np.fft.rfft(X_vals, axis=1) / X_vals.shape[1]
+
+        A0 = np.abs(coeff[:,0])
+        A1 = np.abs(coeff[:,1])
+        A2 = np.abs(coeff[:,2])
+        A3 = np.abs(coeff[:,3])
+
+        print("A0:", A0)
+        print("A1:", A1)
+        print("A2:", A2)
+        print("A3:", A3)
+
+        print(np.shape(cross_sections))
+        print(np.shape(X_vals))
 
     if(calc_area):
         tot_area = hull_circle_diff(best_cross_section, outer_radius, log = True)
