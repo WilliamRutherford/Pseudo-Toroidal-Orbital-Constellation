@@ -409,7 +409,7 @@ test_ellipse = False
 test_eq_area = False
 
 single_orbit_plot = False
-mult_orbit_plot = True
+mult_orbit_plot = False
 
 mult_orbit_density = False
 
@@ -425,6 +425,8 @@ multi_radius_plot = False
 
 discrete_fourier = False
 
+global_minimum_test = True
+
 # Some other calculations are dependent on having an ellipse of best fit. 
 # this includes the variables best_ellipse, ellipse, and best_cross_section
 fitting = not test_ellipse
@@ -435,6 +437,13 @@ outer_radius = 0.3
 num_objs = 25
 ellipse_divs = 50
 cross_divs = ellipse_divs
+
+# These are for solution space operations
+soln_space_divs = 100
+soln_space_a_max = 1.5
+soln_space_i_max = np.pi / 2
+
+top_n_solns = 50
 
 if(__name__ == "__main__"):
     if(test_ellipse):
@@ -773,8 +782,6 @@ if(__name__ == "__main__"):
         ellipse_area_var = ellipse_area_diff - min_rad * max_rad * math.pi / ellipse_divs
         ax_area.scatter(ellipse_angles, ellipse_area_var, c = 'red')
 
-
-
     if(mult_orbit_plot):
         all_orbits, labels = surfaceRevolution(single_orbit, num_objs, log = enable_logging, matrix=True)
         
@@ -972,6 +979,49 @@ if(__name__ == "__main__"):
                 orbit_dist = np.linalg.norm(curr_orbit - compare_circle[:, np.newaxis], axis=0)
                 curr_closer = curr_orbit[:, orbit_dist <= furthest_dist]
                 ax_cl.scatter(curr_closer[0], curr_closer[1], curr_closer[2], tracked_color[i])
-            
-            
+
+    ## Form the solution space
+    if(global_minimum_test or False):
+        soln_space_a = np.linspace(0, soln_space_a_max, soln_space_divs)
+        soln_space_b = np.linspace(0, soln_space_a_max, soln_space_divs)
+        soln_space_i = np.linspace(0, soln_space_i_max, soln_space_divs)
+        #soln_space = np.zeros((soln_space_divs, soln_space_divs, soln_space_divs))
+        soln_space = np.zeros((3, soln_space_divs**3))
+        soln_space_list = []
+        counter = 0
+        for i in range(0, soln_space_divs):
+            for j in range(0, soln_space_divs):
+                for k in range(0, soln_space_divs):
+                    if(soln_space_a[i] > soln_space_b[j]):
+                        soln_space_list.append(np.array([soln_space_a[i], soln_space_b[j], soln_space_i[k]]))
+                        counter += 1
+
+        soln_space = np.column_stack(soln_space_list)
+        print("solution space shape:", soln_space.shape)
+    
+    ## Test if we do indeed have a global minimum, and how close local minima are
+    if(global_minimum_test):
+        soln_space_error = np.zeros((1, soln_space.shape[1]))
+        
+        # Calculate the error for every set of orbital parameters
+        for i in range(0, soln_space.shape[1]):
+            curr_params = soln_space[:, i]
+            (max_rad, min_rad, ang) = curr_params
+            gen_ellipse = generateEqAreaEllipse(min_rad, max_rad, divs = ellipse_divs)
+            gen_cross_section = generateOrbitCrossSection(gen_ellipse, ang)
+            fit_error = hull_circle_diff(gen_cross_section, outer_radius)
+            soln_space_error[0, i] = fit_error
+        # What are the indices of the top n solutions?
+        top_n_indx = np.argsort(soln_space_error[0])[:top_n_solns]
+        top_n_errors = soln_space_error[0, top_n_indx]
+        top_n_params = soln_space[:, top_n_indx]
+        top_n_params_dist = np.linalg.norm(top_n_params - top_n_params[:, 0][:, np.newaxis], axis = 0)
+        print("top n errors:", top_n_errors)
+        print("top n parameters:", top_n_params)
+        print("distances from first solution:", top_n_params_dist)
+        #plt.scatter(top_n_params[0], top_n_params[1], c = top_n_errors, cmap = 'viridis')
+        plt.scatter(np.arange(top_n_solns), top_n_errors, c = 'blue')
+        plt.scatter(np.arange(top_n_solns), top_n_params_dist, c = 'red')
+
+
 plt.show()
