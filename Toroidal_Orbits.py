@@ -433,7 +433,7 @@ fitting = not test_ellipse
 
 circle_fitting = True
 
-outer_radius = 0.3
+outer_radius = 0.5
 num_objs = 25
 ellipse_divs = 50
 cross_divs = ellipse_divs
@@ -997,7 +997,7 @@ if(__name__ == "__main__"):
                         counter += 1
 
         soln_space = np.column_stack(soln_space_list)
-        print("solution space shape:", soln_space.shape)
+        #print("solution space shape:", soln_space.shape)
     
     ## Test if we do indeed have a global minimum, and how close local minima are
     if(global_minimum_test):
@@ -1016,12 +1016,24 @@ if(__name__ == "__main__"):
         top_n_errors = soln_space_error[0, top_n_indx]
         top_n_params = soln_space[:, top_n_indx]
         top_n_params_dist = np.linalg.norm(top_n_params - top_n_params[:, 0][:, np.newaxis], axis = 0)
-        print("top n errors:", top_n_errors)
-        print("top n parameters:", top_n_params)
-        print("distances from first solution:", top_n_params_dist)
+        #print("top n errors:", top_n_errors)
+        #print("top n parameters:", top_n_params)
+        #print("distances from first solution:", top_n_params_dist)
         #plt.scatter(top_n_params[0], top_n_params[1], c = top_n_errors, cmap = 'viridis')
         plt.scatter(np.arange(top_n_solns), top_n_errors, c = 'blue')
         plt.scatter(np.arange(top_n_solns), top_n_params_dist, c = 'red')
 
+        # Calculate using black-box estimation, and compare
+        black_box_params = fit_desired_circle(outer_radius, start_ang=np.arcsin(outer_radius), ellipse_divs = ellipse_divs)
+        black_box_ellipse = generateEqAreaEllipse(black_box_params[0], black_box_params[1], divs = ellipse_divs)
+        black_box_error = hull_circle_diff(generateOrbitCrossSection(black_box_ellipse, black_box_params[2]), outer_radius)
+        
 
+        print("best params we found:")
+        print(top_n_params[:, 0])
+        print("black-box params:")
+        print(black_box_params)
+        print("difference:", np.linalg.norm(top_n_params[:, 0] - black_box_params))
+        print("best error we found:", top_n_errors[0])
+        print("black-box error:", black_box_error)
 plt.show()
